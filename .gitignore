@@ -1,0 +1,23 @@
+node_modules
+IMPLEMENTATION_PLAN.md
+IMPLEMENTATION_STATUS.md
+REMAINING_WORK.md
+VIDEO_IMPLEMENTATION_ORDER.md
+MULTI_TENANCY_PLAN.md
+.env
+.env.*
+!.env.example
+
+# Credentials and private keys
+credentials.json
+credentials.*
+secrets.json
+secrets.*
+*secret*
+*credentials*
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+service-account*.json

@@ -1,0 +1,383 @@
+openapi: 3.1.0
+info:
+  title: TuaVois ERP API
+  version: 1.0.0
+  description: |
+    Authenticated API for TuaVois travel operations, CRM, sales, finance,
+    reporting, documents, and notifications.
+servers:
+  - url: http://localhost:5000/api/v1
+    description: Local development
+security:
+  - bearerAuth: []
+tags:
+  - name: Authentication
+  - name: Clients
+  - name: Quotations
+  - name: Invoices
+  - name: Payments
+  - name: Reports
+  - name: Documents
+paths:
+  /health:
+    get:
+      security: []
+      tags: [Authentication]
+      summary: Check API health
+      responses:
+        '200':
+          description: API is available
+  /docs:
+    get:
+      security: []
+      tags: [Authentication]
+      summary: Open the API documentation landing page
+      responses:
+        '200': { description: HTML documentation page }
+  /openapi.yaml:
+    get:
+      security: []
+      tags: [Authentication]
+      summary: Download the OpenAPI specification
+      responses:
+        '200':
+          description: OpenAPI YAML document
+          content:
+            text/yaml: { schema: { type: string } }
+  /auth/login:
+    post:
+      security: []
+      tags: [Authentication]
+      summary: Sign in
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: JWT and user details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /auth/me:
+    get:
+      tags: [Authentication]
+      summary: Get the current user
+      responses:
+        '200':
+          description: Current user
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /clients:
+    get:
+      tags: [Clients]
+      summary: List clients
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Search'
+      responses:
+        '200':
+          description: Paginated clients
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Clients]
+      summary: Create a client
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Client'
+      responses:
+        '201':
+          description: Client created
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /invoices:
+    get:
+      tags: [Invoices]
+      summary: List invoices
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Search'
+        - name: status
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Paginated invoices
+    post:
+      tags: [Invoices]
+      summary: Create an invoice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InvoiceInput'
+      responses:
+        '201':
+          description: Invoice created
+        '400':
+          $ref: '#/components/responses/ValidationError'
+  /payments:
+    post:
+      tags: [Payments]
+      summary: Record a payment and generate a receipt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PaymentInput'
+      responses:
+        '201':
+          description: Payment and receipt created atomically
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '409':
+          description: Concurrent transaction conflict
+  /reports/financial:
+    get:
+      tags: [Reports]
+      summary: Get a currency-aware financial report
+      parameters:
+        - name: dateFrom
+          in: query
+          schema: { type: string, format: date }
+        - name: dateTo
+          in: query
+          schema: { type: string, format: date }
+        - name: currency
+          in: query
+          schema: { type: string, minLength: 3, maxLength: 3 }
+      responses:
+        '200':
+          description: Financial report grouped by currency
+  /documents:
+    get:
+      tags: [Documents]
+      summary: List documents visible to the current user
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - name: clientId
+          in: query
+          schema: { type: string }
+        - name: tripId
+          in: query
+          schema: { type: string }
+        - name: invoiceId
+          in: query
+          schema: { type: string }
+        - name: quotationId
+          in: query
+          schema: { type: string }
+      responses:
+        '200': { description: Paginated document metadata }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Documents]
+      summary: Upload a client or trip document
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file: { type: string, format: binary }
+                clientId: { type: string }
+                tripId: { type: string }
+                invoiceId: { type: string }
+                quotationId: { type: string }
+      responses:
+        '201':
+          description: Document metadata created
+        '400':
+          $ref: '#/components/responses/ValidationError'
+  /reports/sales:
+    get:
+      tags: [Reports]
+      summary: Get quotation and invoice sales totals by status
+      parameters:
+        - $ref: '#/components/parameters/DateFrom'
+        - $ref: '#/components/parameters/DateTo'
+        - $ref: '#/components/parameters/Currency'
+      responses:
+        '200': { description: Sales report }
+  /reports/trips:
+    get:
+      tags: [Reports]
+      summary: Get trip operational totals
+      parameters:
+        - $ref: '#/components/parameters/DateFrom'
+        - $ref: '#/components/parameters/DateTo'
+        - $ref: '#/components/parameters/Currency'
+      responses:
+        '200': { description: Trips report }
+  /reports/{type}/pdf:
+    get:
+      tags: [Reports]
+      summary: Download a generated PDF report
+      parameters:
+        - name: type
+          in: path
+          required: true
+          schema: { type: string, enum: [financial, sales, trips] }
+        - $ref: '#/components/parameters/DateFrom'
+        - $ref: '#/components/parameters/DateTo'
+      responses:
+        '200':
+          description: PDF report
+          content:
+            application/pdf: { schema: { type: string, format: binary } }
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: List current-user notifications
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200': { description: Paginated notifications }
+  /notifications/{id}/read:
+    put:
+      tags: [Notifications]
+      summary: Mark a notification as read
+      parameters:
+        - $ref: '#/components/parameters/Id'
+      responses:
+        '200': { description: Notification updated }
+  /audit-log:
+    get:
+      tags: [Audit]
+      summary: List audit entries
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Search'
+      responses:
+        '200': { description: Paginated audit entries }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    DateFrom:
+      name: dateFrom
+      in: query
+      schema: { type: string, format: date }
+    DateTo:
+      name: dateTo
+      in: query
+      schema: { type: string, format: date }
+    Currency:
+      name: currency
+      in: query
+      schema: { type: string, minLength: 3, maxLength: 3 }
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    Search:
+      name: search
+      in: query
+      schema: { type: string }
+  schemas:
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 1 }
+    Client:
+      type: object
+      required: [fullName, phone]
+      properties:
+        fullName: { type: string }
+        phone: { type: string }
+        email: { type: string, format: email }
+        company: { type: string }
+        nationality: { type: string }
+        address: { type: string }
+        notes: { type: string }
+    InvoiceInput:
+      type: object
+      required: [clientId, invoiceDate, dueDate, items]
+      properties:
+        clientId: { type: string }
+        invoiceDate: { type: string, format: date }
+        dueDate: { type: string, format: date }
+        currency: { type: string, default: KES }
+        discountValue: { type: number, minimum: 0 }
+        taxRate: { type: number, minimum: 0 }
+        items:
+          type: array
+          minItems: 1
+          items: { type: object }
+    PaymentInput:
+      type: object
+      required: [invoiceId, clientId, amount, paymentMethod, paymentDate]
+      properties:
+        invoiceId: { type: string }
+        clientId: { type: string }
+        amount: { type: number, exclusiveMinimum: 0 }
+        currency: { type: string, default: KES }
+        paymentMethod: { type: string, enum: [CASH, BANK_TRANSFER, MPESA, CARD, OTHER] }
+        paymentDate: { type: string, format: date }
+        reference: { type: string }
+    SuccessResponse:
+      type: object
+      properties:
+        success: { type: boolean, const: true }
+        data: {}
+    ErrorResponse:
+      type: object
+      required: [success, message]
+      properties:
+        success: { type: boolean, const: false }
+        message: { type: string }
+        errors: { type: array, items: { type: object } }
+  responses:
+    ValidationError:
+      description: Validation failed
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+    Forbidden:
+      description: Permission denied
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }

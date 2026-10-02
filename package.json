@@ -1,0 +1,24 @@
+{
+  "name": "tuavois-erp",
+  "version": "1.0.0",
+  "description": "TuaVois Travel ERP",
+  "private": true,
+  "workspaces": [
+    "client",
+    "server"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces",
+    "build": "npm run build --workspaces",
+    "install:all": "npm install"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3"
+  },
+  "allowScripts": {
+    "@prisma/client": "true",
+    "@prisma/engines": "true",
+    "prisma": "true",
+    "puppeteer": "true"
+  }
+}

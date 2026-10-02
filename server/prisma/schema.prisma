@@ -1,0 +1,887 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================
+// AUTHENTICATION & RBAC
+// =============================================
+
+model Role {
+  id              String           @id @default(cuid())
+  name            String           @unique // ADMIN, STAFF, MANAGER
+  description     String?
+  rolePermissions RolePermission[]
+  users           User[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@map("roles")
+}
+
+model Permission {
+  id              String           @id @default(cuid())
+  name            String           @unique // e.g. "clients.create"
+  description     String?
+  rolePermissions RolePermission[]
+  createdAt       DateTime         @default(now())
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  id           String     @id @default(cuid())
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@index([roleId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+model User {
+  id          String     @id @default(cuid())
+  name        String
+  email       String     @unique
+  password    String
+  phone       String?
+  department  String?
+  status      UserStatus @default(ACTIVE)
+  roleId      String
+  role        Role       @relation(fields: [roleId], references: [id])
+  dateJoined  DateTime   @default(now())
+  lastLoginAt DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  // Relations
+  assignedClients    Client[]
+  assignedProspects  Prospect[]
+  assignedTrips      Trip[]
+  createdQuotations  Quotation[]
+  createdInvoices    Invoice[]
+  receivedPayments   Payment[]
+  notifications      Notification[]
+  auditLogs          AuditLog[]
+  uploadedDocuments  Document[]
+  letters            Letter[]
+  createdItineraries Itinerary[]
+  itineraryTemplates ItineraryTemplate[]
+  companyId          String?
+  company            Company?            @relation(fields: [companyId], references: [id])
+
+  @@index([email])
+  @@map("users")
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+// =============================================
+// CRM
+// =============================================
+
+model Client {
+  id              String   @id @default(cuid())
+  clientNumber    String   @unique
+  fullName        String
+  company         String?
+  phone           String
+  email           String?
+  idNumber        String?
+  nationality     String   @default("Kenyan")
+  address         String?
+  notes           String?  @db.Text
+  assignedStaffId String?
+  assignedStaff   User?    @relation(fields: [assignedStaffId], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  quotations  Quotation[]
+  invoices    Invoice[]
+  payments    Payment[]
+  trips       Trip[]
+  itineraries Itinerary[]
+  vouchers    Voucher[]
+  creditNotes CreditNote[]
+  documents   Document[]
+  companyId   String?
+  tenant      Company?     @relation(fields: [companyId], references: [id])
+
+  @@index([fullName])
+  @@index([email])
+  @@index([phone])
+  @@map("clients")
+}
+
+model Prospect {
+  id                  String         @id @default(cuid())
+  prospectNumber      String         @unique
+  fullName            String
+  company             String?
+  phone               String
+  email               String?
+  nationality         String?
+  status              ProspectStatus @default(NEW)
+  leadSource          String?
+  travelInterest      String?
+  estimatedValue      Decimal?       @db.Decimal(15, 2)
+  currency            String         @default("KES")
+  notes               String?        @db.Text
+  assignedStaffId     String?
+  assignedStaff       User?          @relation(fields: [assignedStaffId], references: [id])
+  convertedToClientId String?
+  convertedAt         DateTime?
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  companyId           String?
+  tenant              Company?       @relation(fields: [companyId], references: [id])
+
+  @@index([fullName])
+  @@index([status])
+  @@map("prospects")
+}
+
+enum ProspectStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  QUOTATION_SENT
+  NEGOTIATION
+  WON
+  LOST
+}
+
+// =============================================
+// QUOTATIONS
+// =============================================
+
+model Quotation {
+  id                 String          @id @default(cuid())
+  quotationNumber    String          @unique
+  clientId           String
+  client             Client          @relation(fields: [clientId], references: [id])
+  travelStartDate    DateTime?
+  travelEndDate      DateTime?
+  destination        String?
+  quotationType      String?
+  pax                Int             @default(1)
+  currency           String          @default("KES")
+  exchangeRate       Decimal         @default(1) @db.Decimal(15, 6)
+  validUntil         DateTime?
+  subtotal           Decimal         @default(0) @db.Decimal(15, 2)
+  discountType       DiscountType    @default(AMOUNT)
+  discountValue      Decimal         @default(0) @db.Decimal(15, 2)
+  discountAmount     Decimal         @default(0) @db.Decimal(15, 2)
+  taxRate            Decimal         @default(0) @db.Decimal(5, 2)
+  taxAmount          Decimal         @default(0) @db.Decimal(15, 2)
+  grandTotal         Decimal         @default(0) @db.Decimal(15, 2)
+  notes              String?         @db.Text
+  terms              String?         @db.Text
+  status             QuotationStatus @default(DRAFT)
+  createdById        String?
+  createdBy          User?           @relation(fields: [createdById], references: [id])
+  convertedInvoiceId String?
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+
+  items     QuotationItem[]
+  documents Document[]
+  companyId String?
+  company   Company?        @relation(fields: [companyId], references: [id])
+
+  @@index([clientId])
+  @@index([status])
+  @@map("quotations")
+}
+
+model QuotationItem {
+  id          String    @id @default(cuid())
+  quotationId String
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Decimal   @default(1) @db.Decimal(10, 2)
+  unitPrice   Decimal   @default(0) @db.Decimal(15, 2)
+  total       Decimal   @default(0) @db.Decimal(15, 2)
+  sortOrder   Int       @default(0)
+
+  @@index([quotationId])
+  @@map("quotation_items")
+}
+
+enum QuotationStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  CONVERTED
+}
+
+enum DiscountType {
+  AMOUNT
+  PERCENTAGE
+}
+
+// =============================================
+// INVOICES
+// =============================================
+
+model Invoice {
+  id             String        @id @default(cuid())
+  invoiceNumber  String        @unique
+  clientId       String
+  client         Client        @relation(fields: [clientId], references: [id])
+  tripId         String?
+  trip           Trip?         @relation(fields: [tripId], references: [id])
+  invoiceDate    DateTime      @default(now())
+  dueDate        DateTime
+  currency       String        @default("KES")
+  exchangeRate   Decimal       @default(1) @db.Decimal(15, 6)
+  subtotal       Decimal       @default(0) @db.Decimal(15, 2)
+  discountType   DiscountType  @default(AMOUNT)
+  discountValue  Decimal       @default(0) @db.Decimal(15, 2)
+  discountAmount Decimal       @default(0) @db.Decimal(15, 2)
+  taxRate        Decimal       @default(0) @db.Decimal(5, 2)
+  taxAmount      Decimal       @default(0) @db.Decimal(15, 2)
+  grandTotal     Decimal       @default(0) @db.Decimal(15, 2)
+  amountPaid     Decimal       @default(0) @db.Decimal(15, 2)
+  creditApplied  Decimal       @default(0) @db.Decimal(15, 2)
+  balance        Decimal       @default(0) @db.Decimal(15, 2)
+  notes          String?       @db.Text
+  terms          String?       @db.Text
+  status         InvoiceStatus @default(DRAFT)
+  quotationId    String?
+  createdById    String?
+  createdBy      User?         @relation(fields: [createdById], references: [id])
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  items       InvoiceItem[]
+  payments    Payment[]
+  receipts    Receipt[]
+  creditNotes CreditNote[]
+  documents   Document[]
+  companyId   String?
+  company     Company?      @relation(fields: [companyId], references: [id])
+
+  @@index([clientId])
+  @@index([status])
+  @@index([dueDate])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id          String  @id @default(cuid())
+  invoiceId   String
+  invoice     Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  description String
+  quantity    Decimal @default(1) @db.Decimal(10, 2)
+  pax         Int     @default(1)
+  unitPrice   Decimal @default(0) @db.Decimal(15, 2)
+  total       Decimal @default(0) @db.Decimal(15, 2)
+  sortOrder   Int     @default(0)
+
+  @@index([invoiceId])
+  @@map("invoice_items")
+}
+
+enum InvoiceStatus {
+  DRAFT
+  UNPAID
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+// =============================================
+// PAYMENTS & RECEIPTS
+// =============================================
+
+model Payment {
+  id            String        @id @default(cuid())
+  paymentNumber String        @unique
+  invoiceId     String
+  invoice       Invoice       @relation(fields: [invoiceId], references: [id])
+  clientId      String
+  client        Client        @relation(fields: [clientId], references: [id])
+  amount        Decimal       @db.Decimal(15, 2)
+  currency      String        @default("KES")
+  exchangeRate  Decimal       @default(1) @db.Decimal(15, 6)
+  baseAmount    Decimal       @db.Decimal(15, 2)
+  paymentMethod PaymentMethod @default(BANK_TRANSFER)
+  paymentDate   DateTime
+  reference     String?
+  notes         String?       @db.Text
+  receivedById  String?
+  receivedBy    User?         @relation(fields: [receivedById], references: [id])
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  receipt   Receipt?
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+
+  @@index([invoiceId])
+  @@index([clientId])
+  @@map("payments")
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  MPESA
+  CARD
+  OTHER
+}
+
+model Receipt {
+  id            String   @id @default(cuid())
+  receiptNumber String   @unique
+  paymentId     String   @unique
+  payment       Payment  @relation(fields: [paymentId], references: [id])
+  invoiceId     String
+  invoice       Invoice  @relation(fields: [invoiceId], references: [id])
+  amount        Decimal  @db.Decimal(15, 2)
+  currency      String   @default("KES")
+  balanceAfter  Decimal  @db.Decimal(15, 2)
+  createdAt     DateTime @default(now())
+  companyId     String?
+  company       Company? @relation(fields: [companyId], references: [id])
+
+  @@index([invoiceId])
+  @@map("receipts")
+}
+
+model CreditNote {
+  id               String           @id @default(cuid())
+  creditNoteNumber String           @unique
+  invoiceId        String
+  invoice          Invoice          @relation(fields: [invoiceId], references: [id])
+  clientId         String
+  client           Client           @relation(fields: [clientId], references: [id])
+  amount           Decimal          @db.Decimal(15, 2)
+  currency         String           @default("KES")
+  reason           String?          @db.Text
+  status           CreditNoteStatus @default(ISSUED)
+  amountApplied    Decimal          @default(0) @db.Decimal(15, 2)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  items     CreditNoteItem[]
+  companyId String?
+  company   Company?         @relation(fields: [companyId], references: [id])
+
+  @@index([invoiceId])
+  @@index([clientId])
+  @@map("credit_notes")
+}
+
+model CreditNoteItem {
+  id           String     @id @default(cuid())
+  creditNoteId String
+  creditNote   CreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
+  description  String
+  quantity     Decimal    @default(1) @db.Decimal(10, 2)
+  unitPrice    Decimal    @default(0) @db.Decimal(15, 2)
+  total        Decimal    @default(0) @db.Decimal(15, 2)
+
+  @@map("credit_note_items")
+}
+
+enum CreditNoteStatus {
+  ISSUED
+  APPLIED
+  VOIDED
+}
+
+// =============================================
+// TRIPS
+// =============================================
+
+model Trip {
+  id               String     @id @default(cuid())
+  tripNumber       String     @unique
+  name             String
+  clientId         String
+  client           Client     @relation(fields: [clientId], references: [id])
+  destination      String
+  startDate        DateTime
+  endDate          DateTime
+  assignedStaffId  String?
+  assignedStaff    User?      @relation(fields: [assignedStaffId], references: [id])
+  status           TripStatus @default(PLANNED)
+  estimatedRevenue Decimal    @default(0) @db.Decimal(15, 2)
+  estimatedCost    Decimal    @default(0) @db.Decimal(15, 2)
+  actualRevenue    Decimal    @default(0) @db.Decimal(15, 2)
+  actualCost       Decimal    @default(0) @db.Decimal(15, 2)
+  currency         String     @default("KES")
+  notes            String?    @db.Text
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  participants TripParticipant[]
+  expenses     TripExpense[]
+  itineraries  Itinerary[]
+  vouchers     Voucher[]
+  invoices     Invoice[]
+  documents    Document[]
+  companyId    String?
+  company      Company?          @relation(fields: [companyId], references: [id])
+
+  @@index([clientId])
+  @@index([status])
+  @@index([startDate])
+  @@map("trips")
+}
+
+enum TripStatus {
+  PLANNED
+  CONFIRMED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+model TripParticipant {
+  id                  String    @id @default(cuid())
+  tripId              String
+  trip                Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  fullName            String
+  idNumber            String?
+  phone               String?
+  email               String?
+  nationality         String?
+  dateAdded           DateTime  @default(now())
+  paidDeposit         Boolean   @default(false)
+  adults              Int       @default(1)
+  kids                Int       @default(0)
+  dateOfBirth         DateTime?
+  emergencyContact    String?
+  specialRequirements String?   @db.Text
+  notes               String?   @db.Text
+  createdAt           DateTime  @default(now())
+
+  @@index([tripId])
+  @@map("trip_participants")
+}
+
+model Letter {
+  id          String   @id @default(cuid())
+  letterName  String
+  details     String   @db.Text
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  companyId   String?
+  company     Company? @relation(fields: [companyId], references: [id])
+
+  @@index([createdById])
+  @@index([createdAt])
+  @@map("letters")
+}
+
+model TripExpense {
+  id           String   @id @default(cuid())
+  tripId       String
+  trip         Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  description  String
+  category     String
+  vendor       String?
+  amount       Decimal  @db.Decimal(15, 2)
+  currency     String   @default("KES")
+  exchangeRate Decimal  @default(1) @db.Decimal(15, 6)
+  baseAmount   Decimal  @db.Decimal(15, 2)
+  date         DateTime
+  reference    String?
+  notes        String?  @db.Text
+  createdAt    DateTime @default(now())
+  companyId    String?
+  company      Company? @relation(fields: [companyId], references: [id])
+
+  @@index([tripId])
+  @@map("trip_expenses")
+}
+
+// =============================================
+// ITINERARIES
+// =============================================
+
+model Itinerary {
+  id                String   @id @default(cuid())
+  itineraryNumber   String   @unique
+  tripName          String
+  clientId          String
+  client            Client   @relation(fields: [clientId], references: [id])
+  tripId            String?
+  trip              Trip?    @relation(fields: [tripId], references: [id])
+  departureDate     DateTime
+  returnDate        DateTime
+  departureLocation String?
+  pickupLocation    String?
+  destination       String
+  numTravellers     Int      @default(1)
+  introduction      String?  @db.LongText
+  inclusiveOf       String?  @db.Text
+  exclusiveOf       String?  @db.Text
+  importantInfo     String?  @db.Text
+  termsConditions   String?  @db.Text
+  createdById       String?
+  createdBy         User?    @relation(fields: [createdById], references: [id])
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  days      ItineraryDay[]
+  companyId String?
+  company   Company?       @relation(fields: [companyId], references: [id])
+
+  @@index([clientId])
+  @@index([createdById])
+  @@map("itineraries")
+}
+
+model ItineraryTemplate {
+  id              String   @id @default(cuid())
+  name            String
+  destination     String
+  numTravellers   Int      @default(1)
+  introduction    String?  @db.LongText
+  inclusiveOf     String?  @db.Text
+  exclusiveOf     String?  @db.Text
+  importantInfo   String?  @db.Text
+  termsConditions String?  @db.Text
+  days            Json
+  createdById     String
+  createdBy       User     @relation(fields: [createdById], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  companyId       String?
+  company         Company? @relation(fields: [companyId], references: [id])
+
+  @@index([createdById])
+  @@map("itinerary_templates")
+}
+
+model ItineraryDay {
+  id          String    @id @default(cuid())
+  itineraryId String
+  itinerary   Itinerary @relation(fields: [itineraryId], references: [id], onDelete: Cascade)
+  dayNumber   Int
+  title       String?
+  date        DateTime?
+  sortOrder   Int       @default(0)
+  createdAt   DateTime  @default(now())
+
+  activities ItineraryActivity[]
+
+  @@index([itineraryId])
+  @@map("itinerary_days")
+}
+
+model ItineraryActivity {
+  id          String       @id @default(cuid())
+  dayId       String
+  day         ItineraryDay @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  title       String
+  description String?      @db.Text
+  time        String?
+  location    String?
+  type        ActivityType @default(ACTIVITY)
+  sortOrder   Int          @default(0)
+  createdAt   DateTime     @default(now())
+
+  @@index([dayId])
+  @@map("itinerary_activities")
+}
+
+enum ActivityType {
+  ACTIVITY
+  ACCOMMODATION
+  MEALS
+  TRANSPORT
+  FLIGHT
+  OTHER
+}
+
+// =============================================
+// VOUCHERS
+// =============================================
+
+model Voucher {
+  id                      String        @id @default(cuid())
+  voucherNumber           String        @unique
+  type                    VoucherType
+  status                  VoucherStatus @default(DRAFT)
+  supplierConfirmedAt     DateTime?
+  supplierConfirmationRef String?
+  clientId                String
+  client                  Client        @relation(fields: [clientId], references: [id])
+  tripId                  String?
+  trip                    Trip?         @relation(fields: [tripId], references: [id])
+  guestNames              String?       @db.Text
+  notes                   String?       @db.Text
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
+
+  hotelDetails    HotelVoucher?
+  transferDetails TransferVoucher?
+  services        VoucherService[]
+  companyId       String?
+  company         Company?         @relation(fields: [companyId], references: [id])
+
+  @@index([clientId])
+  @@index([type])
+  @@map("vouchers")
+}
+
+enum VoucherType {
+  HOTEL
+  TRANSFER
+  SERVICE
+}
+
+enum VoucherStatus {
+  DRAFT
+  SENT
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+model HotelVoucher {
+  id               String    @id @default(cuid())
+  voucherId        String    @unique
+  voucher          Voucher   @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  hotel            String
+  address          String?
+  checkIn          DateTime
+  checkOut         DateTime
+  checkedInAt      DateTime?
+  checkedOutAt     DateTime?
+  nights           Int
+  roomType         String?
+  rooms            Int       @default(1)
+  mealPlan         String?
+  bookingReference String?
+  specialRequests  String?   @db.Text
+
+  @@map("hotel_vouchers")
+}
+
+model TransferVoucher {
+  id                   String   @id @default(cuid())
+  voucherId            String   @unique
+  voucher              Voucher  @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  date                 DateTime
+  pickupTime           String?
+  pickupLocation       String
+  dropoffLocation      String
+  vehicleType          String?
+  vehicleRegistration  String?
+  driverName           String?
+  driverPhone          String?
+  fare                 Decimal? @db.Decimal(15, 2)
+  currency             String   @default("KES")
+  passengers           Int      @default(1)
+  flightOrTrainDetails String?  @db.Text
+  instructions         String?  @db.Text
+
+  @@map("transfer_vouchers")
+}
+
+model VoucherService {
+  id          String      @id @default(cuid())
+  voucherId   String
+  voucher     Voucher     @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  serviceType ServiceType
+  description String
+  date        DateTime?
+  location    String?
+  reference   String?
+  notes       String?     @db.Text
+  sortOrder   Int         @default(0)
+
+  @@index([voucherId])
+  @@map("voucher_services")
+}
+
+enum ServiceType {
+  HOTEL
+  FLIGHT
+  TRANSFER
+  TRAIN
+  OTHER
+}
+
+// =============================================
+// SETTINGS & NOTIFICATIONS
+// =============================================
+
+model Company {
+  createdAt          DateTime            @default(now())
+  id                 String              @id @default(cuid())
+  name               String              @default("TuaVois Travel")
+  email              String?
+  phone              String?
+  address            String?             @db.Text
+  website            String?
+  logoUrl            String?
+  currency           String              @default("KES")
+  taxRate            Decimal             @default(16) @db.Decimal(5, 2)
+  taxName            String              @default("VAT")
+  kraPin             String?
+  bankDetails        String?             @db.Text
+  updatedAt          DateTime            @updatedAt
+  users              User[]
+  clients            Client[]
+  prospects          Prospect[]
+  quotations         Quotation[]
+  invoices           Invoice[]
+  payments           Payment[]
+  receipts           Receipt[]
+  creditnotes        CreditNote[]
+  trips              Trip[]
+  letters            Letter[]
+  tripexpenses       TripExpense[]
+  Itineraries        Itinerary[]
+  itinerarytemplates ItineraryTemplate[]
+  vouchers           Voucher[]
+  notifications      Notification[]
+  auditlogs          AuditLog[]
+  documentsequences  DocumentSequence[]
+
+  @@map("companies")
+}
+
+model Currency {
+  id            String         @id @default(cuid())
+  code          String         @unique // KES, USD, EUR, GBP
+  name          String
+  symbol        String
+  isDefault     Boolean        @default(false)
+  isActive      Boolean        @default(true)
+  exchangeRates ExchangeRate[]
+
+  @@map("currencies")
+}
+
+model ExchangeRate {
+  id         String   @id @default(cuid())
+  currencyId String
+  currency   Currency @relation(fields: [currencyId], references: [id])
+  rateToBase Decimal  @db.Decimal(15, 6) // Rate to KES
+  date       DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@index([currencyId])
+  @@map("exchange_rates")
+}
+
+// Atomically reserved document counters. These replace count-based numbering,
+// which can generate duplicates when two requests are processed concurrently.
+model DocumentSequence {
+  key       String   @id
+  nextValue Int      @default(0)
+  updatedAt DateTime @updatedAt
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+
+  @@map("document_sequences")
+}
+
+model Notification {
+  id         String           @id @default(cuid())
+  userId     String
+  user       User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title      String
+  message    String           @db.Text
+  type       NotificationType @default(INFO)
+  read       Boolean          @default(false)
+  entityType String?
+  entityId   String?
+  createdAt  DateTime         @default(now())
+  companyId  String?
+  company    Company?         @relation(fields: [companyId], references: [id])
+
+  @@index([userId, read])
+  @@map("notifications")
+}
+
+enum NotificationType {
+  INFO
+  WARNING
+  SUCCESS
+  ERROR
+  PAYMENT
+  TRIP
+  INVOICE
+  QUOTATION
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String // CREATE, UPDATE, DELETE, LOGIN, LOGOUT, etc.
+  entity    String // Invoice, Client, Payment, etc.
+  entityId  String?
+  changes   Json?
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+
+  @@index([userId])
+  @@index([entity])
+  @@index([entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model Document {
+  id           String @id @default(cuid())
+  fileName     String
+  originalName String
+  mimeType     String
+  size         Int
+  url          String
+
+  clientId String?
+  client   Client? @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  tripId String?
+  trip   Trip?   @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  invoiceId String?
+  invoice   Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  quotationId String?
+  quotation   Quotation? @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+
+  uploadedById String?
+  uploadedBy   User?   @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clientId])
+  @@index([tripId])
+  @@index([invoiceId])
+  @@index([quotationId])
+  @@map("documents")
+}

@@ -1,0 +1,22 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { lettersApi, reportsApi } from '../api/services';
+import { downloadBlob } from '../utils';
+import { Button, Card, CardBody, EmptyState, Input, LoadingSkeleton, Modal, PageHeader, Table, Td, Th, Textarea, ConfirmDialog } from '../components/ui';
+
+export function LettersPage() {
+  const queryClient = useQueryClient();
+  const [search, setSearch] = useState('');
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<any>(null);
+  const [deleting, setDeleting] = useState<any>(null);
+  const [letterName, setLetterName] = useState('');
+  const [details, setDetails] = useState('');
+  const letters = useQuery({ queryKey: ['letters', search], queryFn: async () => (await lettersApi.list({ search: search || undefined, limit: 50 })).data });
+  const save = useMutation({ mutationFn: () => editing ? lettersApi.update(editing.id, { letterName, details }) : lettersApi.create({ letterName, details }), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['letters'] }); setOpen(false); setEditing(null); setLetterName(''); setDetails(''); } });
+  const remove = useMutation({ mutationFn: (id: string) => lettersApi.delete(id), onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['letters'] }); setDeleting(null); } });
+  const openEditor = (letter?: any) => { setEditing(letter || null); setLetterName(letter?.letterName || ''); setDetails(letter?.details || ''); setOpen(true); };
+  const records = letters.data?.data ?? [];
+  const exportFile = async (format: 'xlsx' | 'pdf') => { const response = format === 'xlsx' ? await reportsApi.exportExcel('letters') : await reportsApi.pdf('letters'); downloadBlob(`letters.${format}`, response.data); };
+  return <div className="p-4 sm:p-6 lg:p-8"><PageHeader title="Letters" subtitle="Create and manage reusable client and supplier letters." actions={<div className="flex gap-2"><Button variant="outline" onClick={() => exportFile("pdf")}>PDF</Button><Button variant="outline" onClick={() => exportFile("xlsx")}>Excel</Button><Button variant="outline" onClick={() => window.print()}>Print</Button><Button onClick={() => openEditor()}>+ Add letter</Button></div>} /><div className="mb-4"><Input className="max-w-sm" placeholder="Search letters…" value={search} onChange={(event) => setSearch(event.target.value)} /></div><Card><CardBody className="p-0">{letters.isLoading ? <div className="p-5"><LoadingSkeleton /></div> : letters.isError ? <div className="p-6 text-sm text-red-700" role="alert">Unable to load letters. <Button className="ml-2" size="sm" variant="outline" onClick={() => letters.refetch()}>Retry</Button></div> : records.length === 0 ? <EmptyState title="No letters found" description="Create a letter template or client communication." action={<Button onClick={() => openEditor()}>Add letter</Button>} /> : <Table><thead><tr><Th>Letter name</Th><Th>Created by</Th><Th>Date added</Th><Th>{''}</Th></tr></thead><tbody>{records.map((letter: any) => <tr key={letter.id}><Td className="font-medium">{letter.letterName}</Td><Td>{letter.createdBy?.name || '—'}</Td><Td>{new Date(letter.createdAt).toLocaleDateString()}</Td><Td><div className="flex gap-1"><Button size="sm" variant="ghost" onClick={() => openEditor(letter)}>Edit</Button><Button size="sm" variant="ghost" className="text-red-600" onClick={() => setDeleting(letter)}>Delete</Button></div></Td></tr>)}</tbody></Table>}</CardBody></Card><Modal open={open} onClose={() => setOpen(false)} title={editing ? 'Edit letter' : 'Add letter'}><form className="space-y-4" onSubmit={(event) => { event.preventDefault(); save.mutate(); }}><Input label="Letter name" value={letterName} onChange={(event) => setLetterName(event.target.value)} required /><Textarea label="Letter details" value={details} onChange={(event) => setDetails(event.target.value)} required /><div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button type="submit" loading={save.isPending}>Save letter</Button></div></form></Modal><ConfirmDialog open={Boolean(deleting)} title="Delete letter" description={`Delete ${deleting?.letterName || 'this letter'}?`} onConfirm={() => remove.mutate(deleting.id)} onCancel={() => setDeleting(null)} loading={remove.isPending} destructive /></div>;
+}

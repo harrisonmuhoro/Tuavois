@@ -1,0 +1,20 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { reportsApi, vouchersApi } from '../api/services';
+import { downloadBlob } from '../utils';
+import { Button, Card, CardBody, EmptyState, Input, LoadingSkeleton, PageHeader, Table, Td, Th } from '../components/ui';
+
+type Focus = 'check-in' | 'check-out';
+const day = (offset = 0) => { const value = new Date(); value.setDate(value.getDate() + offset); return value.toISOString().slice(0, 10); };
+
+export function VoucherOperationsPage() {
+  const queryClient = useQueryClient();
+  const [focus, setFocus] = useState<Focus>('check-in');
+  const [date, setDate] = useState(day());
+  const operations = useQuery({ queryKey: ['voucher-operations', focus, date], queryFn: async () => (await vouchersApi.operations({ focus, date })).data });
+  const complete = useMutation({ mutationFn: ({ id, operation }: { id: string; operation: Focus }) => vouchersApi.completeOperation(id, operation), onSuccess: () => queryClient.invalidateQueries({ queryKey: ['voucher-operations'] }) });
+  const records = operations.data?.data ?? [];
+  const exportFile = async (format: 'xlsx' | 'pdf') => { const response = format === 'xlsx' ? await reportsApi.exportExcel('voucher-operations', { focus, date }) : await reportsApi.pdf('voucher-operations', { focus, date }); downloadBlob(`voucher-operations.${format}`, response.data); };
+  const choose = (nextFocus: Focus, offset: number) => { setFocus(nextFocus); setDate(day(offset)); };
+  return <div className="p-4 sm:p-6 lg:p-8"><PageHeader title="Voucher operations" subtitle="Track hotel arrivals and departures for the selected day." actions={<div className="flex gap-2"><Button variant="outline" onClick={() => exportFile("pdf")}>PDF</Button><Button variant="outline" onClick={() => exportFile("xlsx")}>Excel</Button><Button variant="outline" onClick={() => window.print()}>Print</Button></div>} /><div className="mb-5 flex flex-wrap items-end gap-2"><Button variant={focus === 'check-in' && date === day() ? 'primary' : 'outline'} onClick={() => choose('check-in', 0)}>Check in today</Button><Button variant="outline" onClick={() => choose('check-in', 1)}>Check in tomorrow</Button><Button variant={focus === 'check-out' && date === day() ? 'primary' : 'outline'} onClick={() => choose('check-out', 0)}>Check out today</Button><Button variant="outline" onClick={() => choose('check-out', 1)}>Check out tomorrow</Button><Input label="Date" type="date" value={date} onChange={(event) => setDate(event.target.value)} /></div><Card><CardBody className="p-0">{operations.isLoading ? <div className="p-5"><LoadingSkeleton /></div> : operations.isError ? <div className="p-6 text-sm text-red-700" role="alert">Unable to load voucher operations. <Button className="ml-2" size="sm" variant="outline" onClick={() => operations.refetch()}>Retry</Button></div> : records.length === 0 ? <EmptyState title="No hotel operations" description="There are no hotel vouchers scheduled for this date." /> : <Table><thead><tr><Th>Voucher</Th><Th>Client</Th><Th>Hotel</Th><Th>Trip</Th><Th>Scheduled</Th><Th>Progress</Th><Th>{''}</Th></tr></thead><tbody>{records.map((voucher: any) => { const hotel = voucher.hotelDetails; const completed = focus === 'check-in' ? hotel?.checkedInAt : hotel?.checkedOutAt; return <tr key={voucher.id}><Td className="font-medium">{voucher.voucherNumber}</Td><Td>{voucher.client?.fullName || '—'}<p className="text-xs text-slate-500">{voucher.client?.phone || ''}</p></Td><Td>{hotel?.hotel || '—'}</Td><Td>{voucher.trip?.name || '—'}</Td><Td>{new Date(focus === 'check-in' ? hotel.checkIn : hotel.checkOut).toLocaleDateString()}</Td><Td>{completed ? `Completed ${new Date(completed).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Pending'}</Td><Td>{completed ? <span className="text-sm text-green-700">Done</span> : <Button size="sm" onClick={() => complete.mutate({ id: voucher.id, operation: focus })} loading={complete.isPending}>{focus === 'check-in' ? 'Check in' : 'Check out'}</Button>}</Td></tr>; })}</tbody></Table>}</CardBody></Card></div>;
+}
