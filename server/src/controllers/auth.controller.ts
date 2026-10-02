@@ -5,7 +5,7 @@ import prisma from '../config/database';
 import { UnauthorizedError, NotFoundError } from '../utils/errors';
 import { AuthRequest } from '../middleware/auth.middleware';
 
-const signToken = (userId: string, companyId: string | null): string => {
+const signToken = (userId: string, companyId: string): string => {
   const secret = process.env.JWT_SECRET!;
   const expiresIn = process.env.JWT_EXPIRES_IN || '7d';
   return jwt.sign({ userId, companyId }, secret, { expiresIn } as any);
@@ -17,7 +17,7 @@ export const login = async (req: Request, res: Response, next: NextFunction): Pr
 
     const user = await prisma.user.findUnique({
       where: { email },
-      include: { role: { include: { rolePermissions: { include: { permission: true } } } } },
+      include: { company: true, role: { include: { rolePermissions: { include: { permission: true } } } } },
     });
 
     if (!user || !(await bcrypt.compare(password, user.password))) {
@@ -27,13 +27,16 @@ export const login = async (req: Request, res: Response, next: NextFunction): Pr
     if (user.status !== 'ACTIVE') {
       throw new UnauthorizedError('Your account has been deactivated');
     }
+    if (!user.companyId) {
+      throw new UnauthorizedError('Your account is not assigned to a company');
+    }
 
     // Update last login
     await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
 
     // Audit log
     await prisma.auditLog.create({
-      data: { userId: user.id, action: 'LOGIN', entity: 'User', entityId: user.id },
+      data: { userId: user.id, companyId: user.companyId, action: 'LOGIN', entity: 'User', entityId: user.id },
     });
 
     const token = signToken(user.id, user.companyId);
@@ -50,6 +53,7 @@ export const login = async (req: Request, res: Response, next: NextFunction): Pr
           role: user.role.name,
           department: user.department,
           companyId: user.companyId,
+          company: user.company,
           permissions: user.role.rolePermissions.map((p) => p.permission.name),
         },
       },
@@ -63,7 +67,7 @@ export const logout = async (req: AuthRequest, res: Response, next: NextFunction
   try {
     if (req.user) {
       await prisma.auditLog.create({
-        data: { userId: req.user.id, action: 'LOGOUT', entity: 'User', entityId: req.user.id },
+        data: { userId: req.user.id, companyId: req.companyId, action: 'LOGOUT', entity: 'User', entityId: req.user.id },
       });
     }
     res.json({ success: true, message: 'Logged out successfully', data: null });
@@ -76,7 +80,7 @@ export const getMe = async (req: AuthRequest, res: Response, next: NextFunction)
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user!.id },
-      include: { role: { include: { rolePermissions: { include: { permission: true } } } } },
+      include: { company: true, role: { include: { rolePermissions: { include: { permission: true } } } } },
       omit: { password: true },
     });
 

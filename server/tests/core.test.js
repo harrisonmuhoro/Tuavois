@@ -4,7 +4,7 @@ const { Prisma } = require('@prisma/client');
 
 const { calculateInvoiceTotals } = require('../dist/controllers/invoices.controller');
 const { determineInvoiceStatus } = require('../dist/controllers/payments.controller');
-const { validate, loginSchema, creditNoteApplicationSchema } = require('../dist/validators');
+const { validate, loginSchema, creditNoteApplicationSchema, companyProvisionSchema } = require('../dist/validators');
 const { authorize } = require('../dist/middleware/auth.middleware');
 const { reserveDocumentNumber } = require('../dist/utils/sequences');
 const { runSerializableTransaction } = require('../dist/utils/transactions');
@@ -77,6 +77,14 @@ test('login and credit-application payloads reject unsafe input', async () => {
   const valid = { body: {} };
   assert.equal(await invoke(validate(creditNoteApplicationSchema), valid), undefined);
   assert.deepEqual(valid.body, {});
+});
+
+test('company provisioning payload requires an owner and valid tenant identity', async () => {
+  const invalid = await invoke(validate(companyProvisionSchema), { body: { company: { name: 'New Agency' }, owner: { name: 'Owner', email: 'not-an-email', password: 'short' } } });
+  assert.equal(invalid.name, 'ZodError');
+  const valid = { body: { company: { name: 'New Agency', currency: 'KES' }, owner: { name: 'Agency Owner', email: 'owner@example.com', password: 'long-enough-password' } } };
+  assert.equal(await invoke(validate(companyProvisionSchema), valid), undefined);
+  assert.equal(valid.body.company.currency, 'KES');
 });
 
 test('document sequence reservation produces unique, padded document numbers', async () => {

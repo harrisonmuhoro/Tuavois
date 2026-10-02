@@ -6,7 +6,7 @@ export const processUpcomingTripMilestones = async (): Promise<number> => {
   const horizon = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
   const trips = await prisma.trip.findMany({
     where: { assignedStaffId: { not: null }, status: { in: ['PLANNED', 'CONFIRMED'] }, OR: [{ startDate: { gte: now, lte: horizon } }, { endDate: { gte: now, lte: horizon } }] },
-    select: { id: true, tripNumber: true, destination: true, startDate: true, endDate: true, assignedStaffId: true },
+    select: { id: true, tripNumber: true, destination: true, startDate: true, endDate: true, assignedStaffId: true, companyId: true },
   });
   let created = 0;
   for (const trip of trips) {
@@ -16,9 +16,9 @@ export const processUpcomingTripMilestones = async (): Promise<number> => {
       ...(trip.endDate >= now && trip.endDate <= horizon ? [{ title: 'Trip ending soon', message: `Trip ${trip.tripNumber} to ${trip.destination} ends on ${trip.endDate.toLocaleDateString()}.` }] : []),
     ];
     for (const milestone of milestones) {
-      const existing = await prisma.notification.findFirst({ where: { userId: trip.assignedStaffId, entityType: 'Trip', entityId: trip.id, type: 'TRIP', title: milestone.title } });
+      const existing = await prisma.notification.findFirst({ where: { companyId: trip.companyId, userId: trip.assignedStaffId, entityType: 'Trip', entityId: trip.id, type: 'TRIP', title: milestone.title } });
       if (existing) continue;
-      await prisma.notification.create({ data: { userId: trip.assignedStaffId, title: milestone.title, message: milestone.message, type: 'TRIP', entityType: 'Trip', entityId: trip.id } });
+      await prisma.notification.create({ data: { companyId: trip.companyId, userId: trip.assignedStaffId, title: milestone.title, message: milestone.message, type: 'TRIP', entityType: 'Trip', entityId: trip.id } });
       created += 1;
     }
   }

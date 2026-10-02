@@ -3,6 +3,7 @@ import ExcelJS from 'exceljs';
 import prisma from '../config/database';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { ForbiddenError } from '../utils/errors';
+import { tenantScope } from '../utils/tenant';
 
 const dateFilter = (req: AuthRequest) => {
   const { dateFrom, dateTo } = req.query as Record<string, string>;
@@ -35,19 +36,19 @@ export const exportReport = async (req: AuthRequest, res: Response, next: NextFu
     const date = dateFilter(req);
     const filters = tableFilters(req);
     if (type === 'financial') {
-      const where: any = { ...(date ? { invoiceDate: date } : {}), ...(filters.status ? { status: filters.status } : {}), ...(filters.clientId ? { clientId: filters.clientId } : {}), ...(filters.currency ? { currency: filters.currency } : {}), ...(filters.search ? { invoiceNumber: { contains: filters.search } } : {}) };
+      const where: any = { ...tenantScope(req), ...(date ? { invoiceDate: date } : {}), ...(filters.status ? { status: filters.status } : {}), ...(filters.clientId ? { clientId: filters.clientId } : {}), ...(filters.currency ? { currency: filters.currency } : {}), ...(filters.search ? { invoiceNumber: { contains: filters.search } } : {}) };
       const invoices = await prisma.invoice.findMany({ where, include: { client: { select: { fullName: true } } }, orderBy: { invoiceDate: 'desc' } });
       await sendWorkbook(res, 'financial-report.xlsx', 'Financial report', ['Invoice', 'Client', 'Currency', 'Total', 'Paid', 'Balance', 'Status'], invoices.map((row) => ({ Invoice: row.invoiceNumber, Client: row.client.fullName, Currency: row.currency, Total: Number(row.grandTotal), Paid: Number(row.amountPaid), Balance: Number(row.balance), Status: row.status })));
       return;
     }
     if (type === 'trips') {
-      const where: any = { ...(date ? { startDate: date } : {}), ...(filters.status ? { status: filters.status } : {}), ...(filters.clientId ? { clientId: filters.clientId } : {}), ...(filters.currency ? { currency: filters.currency } : {}), ...(filters.search ? { OR: [{ name: { contains: filters.search } }, { tripNumber: { contains: filters.search } }] } : {}) };
+      const where: any = { ...tenantScope(req), ...(date ? { startDate: date } : {}), ...(filters.status ? { status: filters.status } : {}), ...(filters.clientId ? { clientId: filters.clientId } : {}), ...(filters.currency ? { currency: filters.currency } : {}), ...(filters.search ? { OR: [{ name: { contains: filters.search } }, { tripNumber: { contains: filters.search } }] } : {}) };
       const trips = await prisma.trip.findMany({ where, include: { client: { select: { fullName: true } }, _count: { select: { participants: true, expenses: true } } }, orderBy: { startDate: 'desc' } });
       await sendWorkbook(res, 'trips-report.xlsx', 'Trips report', ['Trip', 'Client', 'Destination', 'Status', 'Participants', 'Expenses'], trips.map((row) => ({ Trip: row.name, Client: row.client?.fullName || '', Destination: row.destination, Status: row.status, Participants: row._count.participants, Expenses: row._count.expenses })));
       return;
     }
     if (type === 'sales') {
-      const where: any = { ...(date ? { createdAt: date } : {}), ...(filters.clientId ? { clientId: filters.clientId } : {}), ...(filters.currency ? { currency: filters.currency } : {}), ...(filters.status ? { status: filters.status } : {}) };
+      const where: any = { ...tenantScope(req), ...(date ? { createdAt: date } : {}), ...(filters.clientId ? { clientId: filters.clientId } : {}), ...(filters.currency ? { currency: filters.currency } : {}), ...(filters.status ? { status: filters.status } : {}) };
       const [quotations, invoices] = await Promise.all([prisma.quotation.groupBy({ by: ['status'], where, _count: { id: true }, _sum: { grandTotal: true } }), prisma.invoice.groupBy({ by: ['status'], where, _count: { id: true }, _sum: { grandTotal: true } })]);
       await sendWorkbook(res, 'sales-report.xlsx', 'Sales report', ['Record', 'Status', 'Count', 'Total'], [...quotations.map((row) => ({ Record: 'Quotation', Status: row.status, Count: row._count.id, Total: Number(row._sum.grandTotal || 0) })), ...invoices.map((row) => ({ Record: 'Invoice', Status: row.status, Count: row._count.id, Total: Number(row._sum.grandTotal || 0) }))]);
       return;
@@ -71,19 +72,19 @@ export const exportReport = async (req: AuthRequest, res: Response, next: NextFu
       if (dateTo) createdAt.lte = new Date(dateTo);
       if (month) { createdAt.gte = new Date(Number(year || new Date().getFullYear()), Number(month) - 1, 1); createdAt.lt = new Date(Number(year || new Date().getFullYear()), Number(month), 1); }
       if (specificDate) { createdAt.gte = new Date(`${specificDate}T00:00:00`); createdAt.lt = new Date(`${specificDate}T00:00:00`); createdAt.lt.setDate(createdAt.lt.getDate() + 1); }
-      const where: any = { ...(Object.keys(createdAt).length ? { createdAt } : {}), ...(filters.status ? { status: filters.status } : {}), ...(filters.clientId ? { clientId: filters.clientId } : {}), ...(filters.currency ? { currency: filters.currency } : {}), ...(quotationType ? { quotationType } : {}), ...(travelDateFrom || travelDateTo ? { travelStartDate: { gte: travelDateFrom ? new Date(travelDateFrom) : undefined, lte: travelDateTo ? new Date(travelDateTo) : undefined } } : {}), ...(filters.search ? { OR: [{ quotationNumber: { contains: filters.search } }, { destination: { contains: filters.search } }] } : {}) };
+      const where: any = { ...tenantScope(req), ...(Object.keys(createdAt).length ? { createdAt } : {}), ...(filters.status ? { status: filters.status } : {}), ...(filters.clientId ? { clientId: filters.clientId } : {}), ...(filters.currency ? { currency: filters.currency } : {}), ...(quotationType ? { quotationType } : {}), ...(travelDateFrom || travelDateTo ? { travelStartDate: { gte: travelDateFrom ? new Date(travelDateFrom) : undefined, lte: travelDateTo ? new Date(travelDateTo) : undefined } } : {}), ...(filters.search ? { OR: [{ quotationNumber: { contains: filters.search } }, { destination: { contains: filters.search } }] } : {}) };
       const rows = await prisma.quotation.findMany({ where, include: { client: { select: { fullName: true } }, createdBy: { select: { name: true } } }, orderBy: { createdAt: 'desc' } });
       await sendWorkbook(res, 'quotations.xlsx', 'Quotations', ['Quotation', 'Client', 'Destination', 'Travel start', 'Travel end', 'Type', 'Currency', 'Total', 'Status', 'Worker', 'Created'], rows.map((row) => ({ Quotation: row.quotationNumber, Client: row.client.fullName, Destination: row.destination || '', 'Travel start': row.travelStartDate?.toISOString() || '', 'Travel end': row.travelEndDate?.toISOString() || '', Type: row.quotationType || '', Currency: row.currency, Total: Number(row.grandTotal), Status: row.status, Worker: row.createdBy?.name || '', Created: row.createdAt.toISOString() })));
       return;
     }
     if (type === 'itineraries') {
-      const where: any = { ...(date ? { departureDate: date } : {}), ...(filters.clientId ? { clientId: filters.clientId } : {}), ...(filters.staffId ? { createdById: filters.staffId } : {}), ...(filters.search ? { OR: [{ itineraryNumber: { contains: filters.search } }, { tripName: { contains: filters.search } }, { destination: { contains: filters.search } }] } : {}) };
+      const where: any = { ...tenantScope(req), ...(date ? { departureDate: date } : {}), ...(filters.clientId ? { clientId: filters.clientId } : {}), ...(filters.staffId ? { createdById: filters.staffId } : {}), ...(filters.search ? { OR: [{ itineraryNumber: { contains: filters.search } }, { tripName: { contains: filters.search } }, { destination: { contains: filters.search } }] } : {}) };
       const rows = await prisma.itinerary.findMany({ where, include: { client: { select: { fullName: true } }, createdBy: { select: { name: true } }, _count: { select: { days: true } } }, orderBy: { departureDate: 'desc' } });
       await sendWorkbook(res, 'itineraries.xlsx', 'Itineraries', ['Itinerary', 'Trip', 'Client', 'Destination', 'Departure', 'Return', 'Travellers', 'Days', 'Worker'], rows.map((row) => ({ Itinerary: row.itineraryNumber, Trip: row.tripName, Client: row.client.fullName, Destination: row.destination, Departure: row.departureDate.toISOString(), Return: row.returnDate.toISOString(), Travellers: row.numTravellers, Days: row._count.days, Worker: row.createdBy?.name || '' })));
       return;
     }
     if (type === 'letters') {
-      const rows = await prisma.letter.findMany({ where: filters.staffId ? { createdById: filters.staffId } : {}, include: { createdBy: { select: { name: true } } }, orderBy: { createdAt: 'desc' } });
+      const rows = await prisma.letter.findMany({ where: { ...tenantScope(req), ...(filters.staffId ? { createdById: filters.staffId } : {}) }, include: { createdBy: { select: { name: true } } }, orderBy: { createdAt: 'desc' } });
       await sendWorkbook(res, 'letters.xlsx', 'Letters', ['Letter', 'Details', 'Created by', 'Created'], rows.map((row) => ({ Letter: row.letterName, Details: row.details, 'Created by': row.createdBy.name, Created: row.createdAt.toISOString() })));
       return;
     }
@@ -92,30 +93,30 @@ export const exportReport = async (req: AuthRequest, res: Response, next: NextFu
       const day = date ? new Date(`${date}T00:00:00`) : new Date();
       const next = new Date(day); next.setDate(next.getDate() + 1);
       const field = focus === 'check-out' ? 'checkOut' : 'checkIn';
-      const rows = await prisma.voucher.findMany({ where: { type: 'HOTEL', hotelDetails: { [field]: { gte: day, lt: next } } }, include: { client: { select: { fullName: true } }, trip: { select: { name: true } }, hotelDetails: true }, orderBy: { createdAt: 'desc' } });
+      const rows = await prisma.voucher.findMany({ where: { ...tenantScope(req), type: 'HOTEL', hotelDetails: { [field]: { gte: day, lt: next } } }, include: { client: { select: { fullName: true } }, trip: { select: { name: true } }, hotelDetails: true }, orderBy: { createdAt: 'desc' } });
       await sendWorkbook(res, 'voucher-operations.xlsx', 'Voucher operations', ['Voucher', 'Client', 'Hotel', 'Trip', 'Scheduled', 'Completed'], rows.map((row) => ({ Voucher: row.voucherNumber, Client: row.client.fullName, Hotel: row.hotelDetails?.hotel || '', Trip: row.trip?.name || '', Scheduled: (row.hotelDetails?.[field] as Date | undefined)?.toISOString() || '', Completed: (focus === 'check-out' ? row.hotelDetails?.checkedOutAt : row.hotelDetails?.checkedInAt)?.toISOString() || '' })));
       return;
     }
     if (type === 'invoices') {
-      const where: any = { ...(filters.status ? { status: filters.status } : {}), ...(filters.clientId ? { clientId: filters.clientId } : {}), ...(filters.currency ? { currency: filters.currency } : {}), ...(filters.search ? { invoiceNumber: { contains: filters.search } } : {}) };
+      const where: any = { ...tenantScope(req), ...(filters.status ? { status: filters.status } : {}), ...(filters.clientId ? { clientId: filters.clientId } : {}), ...(filters.currency ? { currency: filters.currency } : {}), ...(filters.search ? { invoiceNumber: { contains: filters.search } } : {}) };
       const rows = await prisma.invoice.findMany({ where, include: { client: { select: { fullName: true } } }, orderBy: { invoiceDate: 'desc' } });
       await sendWorkbook(res, 'invoices.xlsx', 'Invoices', ['Invoice', 'Client', 'Date', 'Due date', 'Currency', 'Total', 'Paid', 'Credit', 'Balance', 'Status'], rows.map((row) => ({ Invoice: row.invoiceNumber, Client: row.client.fullName, Date: row.invoiceDate.toISOString(), 'Due date': row.dueDate.toISOString(), Currency: row.currency, Total: Number(row.grandTotal), Paid: Number(row.amountPaid), Credit: Number(row.creditApplied), Balance: Number(row.balance), Status: row.status })));
       return;
     }
     if (type === 'payments') {
-      const where: any = { ...(date ? { paymentDate: date } : {}), ...(filters.clientId ? { clientId: filters.clientId } : {}), ...(filters.currency ? { currency: filters.currency } : {}), ...(filters.search ? { OR: [{ paymentNumber: { contains: filters.search } }, { reference: { contains: filters.search } }] } : {}) };
+      const where: any = { ...tenantScope(req), ...(date ? { paymentDate: date } : {}), ...(filters.clientId ? { clientId: filters.clientId } : {}), ...(filters.currency ? { currency: filters.currency } : {}), ...(filters.search ? { OR: [{ paymentNumber: { contains: filters.search } }, { reference: { contains: filters.search } }] } : {}) };
       const rows = await prisma.payment.findMany({ where, include: { client: { select: { fullName: true } }, invoice: { select: { invoiceNumber: true } } }, orderBy: { paymentDate: 'desc' } });
       await sendWorkbook(res, 'payments.xlsx', 'Payments', ['Payment', 'Invoice', 'Client', 'Date', 'Amount', 'Currency', 'Method', 'Reference'], rows.map((row) => ({ Payment: row.paymentNumber, Invoice: row.invoice.invoiceNumber, Client: row.client.fullName, Date: row.paymentDate.toISOString(), Amount: Number(row.amount), Currency: row.currency, Method: row.paymentMethod, Reference: row.reference || '' })));
       return;
     }
     if (type === 'vouchers') {
-      const where: any = { ...(filters.status ? { status: filters.status } : {}), ...(filters.clientId ? { clientId: filters.clientId } : {}) };
+      const where: any = { ...tenantScope(req), ...(filters.status ? { status: filters.status } : {}), ...(filters.clientId ? { clientId: filters.clientId } : {}) };
       const rows = await prisma.voucher.findMany({ where, include: { client: { select: { fullName: true } }, trip: { select: { tripNumber: true, name: true } } }, orderBy: { createdAt: 'desc' } });
       await sendWorkbook(res, 'vouchers.xlsx', 'Vouchers', ['Voucher', 'Type', 'Client', 'Trip number', 'Trip', 'Guests', 'Created'], rows.map((row) => ({ Voucher: row.voucherNumber, Type: row.type, Client: row.client.fullName, 'Trip number': row.trip?.tripNumber || '', Trip: row.trip?.name || '', Guests: row.guestNames || '', Created: row.createdAt.toISOString() })));
       return;
     }
     if (type === 'credit-notes') {
-      const where: any = { ...(filters.status ? { status: filters.status } : {}), ...(filters.clientId ? { clientId: filters.clientId } : {}), ...(filters.currency ? { currency: filters.currency } : {}) };
+      const where: any = { ...tenantScope(req), ...(filters.status ? { status: filters.status } : {}), ...(filters.clientId ? { clientId: filters.clientId } : {}), ...(filters.currency ? { currency: filters.currency } : {}) };
       const rows = await prisma.creditNote.findMany({ where, include: { client: { select: { fullName: true } }, invoice: { select: { invoiceNumber: true } } }, orderBy: { createdAt: 'desc' } });
       await sendWorkbook(res, 'credit-notes.xlsx', 'Credit notes', ['Credit note', 'Invoice', 'Client', 'Amount', 'Applied', 'Currency', 'Status', 'Reason', 'Created'], rows.map((row) => ({ 'Credit note': row.creditNoteNumber, Invoice: row.invoice.invoiceNumber, Client: row.client.fullName, Amount: Number(row.amount), Applied: Number(row.amountApplied), Currency: row.currency, Status: row.status, Reason: row.reason || '', Created: row.createdAt.toISOString() })));
       return;

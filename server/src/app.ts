@@ -30,6 +30,7 @@ import documentsRoutes from './routes/documents.routes';
 import creditNotesRoutes from './routes/credit-notes.routes';
 import lettersRoutes from './routes/letters.routes';
 import searchRoutes from './routes/search.routes';
+import companiesRoutes from './routes/companies.routes';
 
 validateEnvironment();
 const app = express();
@@ -56,6 +57,8 @@ app.use('/api', limiter);
 // Auth rate limiting (stricter)
 const authLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, standardHeaders: true });
 app.use('/api/v1/auth/login', authLimiter);
+const companyProvisioningLimiter = rateLimit({ windowMs: 60 * 60 * 1000, max: 5, standardHeaders: true });
+app.use('/api/v1/companies', companyProvisioningLimiter);
 
 // Body parsing
 app.use(express.json({ limit: '10mb' }));
@@ -85,6 +88,7 @@ app.get('/api/v1/receipts', authenticate, authorize('payments.view'), getReceipt
 
 // Module routes
 app.use('/api/v1/auth', authRoutes);
+app.use('/api/v1/companies', companiesRoutes);
 app.use('/api/v1/clients', clientRoutes);
 app.use('/api/v1/prospects', prospectRoutes);
 app.use('/api/v1/quotations', quotationRoutes);

@@ -80,6 +80,7 @@ model User {
   company            Company?            @relation(fields: [companyId], references: [id])
 
   @@index([email])
+  @@index([companyId])
   @@map("users")
 }
 
@@ -95,7 +96,7 @@ enum UserStatus {
 
 model Client {
   id              String   @id @default(cuid())
-  clientNumber    String   @unique
+  clientNumber    String
   fullName        String
   company         String?
   phone           String
@@ -120,15 +121,17 @@ model Client {
   companyId   String?
   tenant      Company?     @relation(fields: [companyId], references: [id])
 
+  @@unique([companyId, clientNumber])
   @@index([fullName])
   @@index([email])
   @@index([phone])
+  @@index([companyId])
   @@map("clients")
 }
 
 model Prospect {
   id                  String         @id @default(cuid())
-  prospectNumber      String         @unique
+  prospectNumber      String
   fullName            String
   company             String?
   phone               String
@@ -149,8 +152,10 @@ model Prospect {
   companyId           String?
   tenant              Company?       @relation(fields: [companyId], references: [id])
 
+  @@unique([companyId, prospectNumber])
   @@index([fullName])
   @@index([status])
+  @@index([companyId])
   @@map("prospects")
 }
 
@@ -170,7 +175,7 @@ enum ProspectStatus {
 
 model Quotation {
   id                 String          @id @default(cuid())
-  quotationNumber    String          @unique
+  quotationNumber    String
   clientId           String
   client             Client          @relation(fields: [clientId], references: [id])
   travelStartDate    DateTime?
@@ -202,8 +207,10 @@ model Quotation {
   companyId String?
   company   Company?        @relation(fields: [companyId], references: [id])
 
+  @@unique([companyId, quotationNumber])
   @@index([clientId])
   @@index([status])
+  @@index([companyId])
   @@map("quotations")
 }
 
@@ -241,7 +248,7 @@ enum DiscountType {
 
 model Invoice {
   id             String        @id @default(cuid())
-  invoiceNumber  String        @unique
+  invoiceNumber  String
   clientId       String
   client         Client        @relation(fields: [clientId], references: [id])
   tripId         String?
@@ -277,9 +284,11 @@ model Invoice {
   companyId   String?
   company     Company?      @relation(fields: [companyId], references: [id])
 
+  @@unique([companyId, invoiceNumber])
   @@index([clientId])
   @@index([status])
   @@index([dueDate])
+  @@index([companyId])
   @@map("invoices")
 }
 
@@ -313,7 +322,7 @@ enum InvoiceStatus {
 
 model Payment {
   id            String        @id @default(cuid())
-  paymentNumber String        @unique
+  paymentNumber String
   invoiceId     String
   invoice       Invoice       @relation(fields: [invoiceId], references: [id])
   clientId      String
@@ -335,8 +344,10 @@ model Payment {
   companyId String?
   company   Company? @relation(fields: [companyId], references: [id])
 
+  @@unique([companyId, paymentNumber])
   @@index([invoiceId])
   @@index([clientId])
+  @@index([companyId])
   @@map("payments")
 }
 
@@ -350,7 +361,7 @@ enum PaymentMethod {
 
 model Receipt {
   id            String   @id @default(cuid())
-  receiptNumber String   @unique
+  receiptNumber String
   paymentId     String   @unique
   payment       Payment  @relation(fields: [paymentId], references: [id])
   invoiceId     String
@@ -362,13 +373,15 @@ model Receipt {
   companyId     String?
   company       Company? @relation(fields: [companyId], references: [id])
 
+  @@unique([companyId, receiptNumber])
   @@index([invoiceId])
+  @@index([companyId])
   @@map("receipts")
 }
 
 model CreditNote {
   id               String           @id @default(cuid())
-  creditNoteNumber String           @unique
+  creditNoteNumber String
   invoiceId        String
   invoice          Invoice          @relation(fields: [invoiceId], references: [id])
   clientId         String
@@ -385,8 +398,10 @@ model CreditNote {
   companyId String?
   company   Company?         @relation(fields: [companyId], references: [id])
 
+  @@unique([companyId, creditNoteNumber])
   @@index([invoiceId])
   @@index([clientId])
+  @@index([companyId])
   @@map("credit_notes")
 }
 
@@ -414,7 +429,7 @@ enum CreditNoteStatus {
 
 model Trip {
   id               String     @id @default(cuid())
-  tripNumber       String     @unique
+  tripNumber       String
   name             String
   clientId         String
   client           Client     @relation(fields: [clientId], references: [id])
@@ -442,9 +457,11 @@ model Trip {
   companyId    String?
   company      Company?          @relation(fields: [companyId], references: [id])
 
+  @@unique([companyId, tripNumber])
   @@index([clientId])
   @@index([status])
   @@index([startDate])
+  @@index([companyId])
   @@map("trips")
 }
 
@@ -492,6 +509,7 @@ model Letter {
 
   @@index([createdById])
   @@index([createdAt])
+  @@index([companyId])
   @@map("letters")
 }
 
@@ -514,6 +532,7 @@ model TripExpense {
   company      Company? @relation(fields: [companyId], references: [id])
 
   @@index([tripId])
+  @@index([companyId])
   @@map("trip_expenses")
 }
 
@@ -523,7 +542,7 @@ model TripExpense {
 
 model Itinerary {
   id                String   @id @default(cuid())
-  itineraryNumber   String   @unique
+  itineraryNumber   String
   tripName          String
   clientId          String
   client            Client   @relation(fields: [clientId], references: [id])
@@ -549,8 +568,10 @@ model Itinerary {
   companyId String?
   company   Company?       @relation(fields: [companyId], references: [id])
 
+  @@unique([companyId, itineraryNumber])
   @@index([clientId])
   @@index([createdById])
+  @@index([companyId])
   @@map("itineraries")
 }
 
@@ -573,6 +594,7 @@ model ItineraryTemplate {
   company         Company? @relation(fields: [companyId], references: [id])
 
   @@index([createdById])
+  @@index([companyId])
   @@map("itinerary_templates")
 }
 
@@ -623,7 +645,7 @@ enum ActivityType {
 
 model Voucher {
   id                      String        @id @default(cuid())
-  voucherNumber           String        @unique
+  voucherNumber           String
   type                    VoucherType
   status                  VoucherStatus @default(DRAFT)
   supplierConfirmedAt     DateTime?
@@ -643,8 +665,10 @@ model Voucher {
   companyId       String?
   company         Company?         @relation(fields: [companyId], references: [id])
 
+  @@unique([companyId, voucherNumber])
   @@index([clientId])
   @@index([type])
+  @@index([companyId])
   @@map("vouchers")
 }
 
@@ -738,6 +762,7 @@ model Company {
   email              String?
   phone              String?
   address            String?             @db.Text
+  taxId              String?
   website            String?
   logoUrl            String?
   currency           String              @default("KES")
@@ -763,6 +788,7 @@ model Company {
   notifications      Notification[]
   auditlogs          AuditLog[]
   documentsequences  DocumentSequence[]
+  documents          Document[]
 
   @@map("companies")
 }
@@ -800,6 +826,7 @@ model DocumentSequence {
   companyId String?
   company   Company? @relation(fields: [companyId], references: [id])
 
+  @@index([companyId])
   @@map("document_sequences")
 }
 
@@ -818,6 +845,7 @@ model Notification {
   company    Company?         @relation(fields: [companyId], references: [id])
 
   @@index([userId, read])
+  @@index([companyId])
   @@map("notifications")
 }
 
@@ -850,6 +878,7 @@ model AuditLog {
   @@index([entity])
   @@index([entityId])
   @@index([createdAt])
+  @@index([companyId])
   @@map("audit_logs")
 }
 
@@ -876,6 +905,9 @@ model Document {
   uploadedById String?
   uploadedBy   User?   @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
 
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id])
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -883,5 +915,6 @@ model Document {
   @@index([tripId])
   @@index([invoiceId])
   @@index([quotationId])
+  @@index([companyId])
   @@map("documents")
 }

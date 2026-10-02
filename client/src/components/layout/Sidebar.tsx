@@ -70,6 +70,7 @@ const navItems: NavItem[] = [
 export default function Sidebar({ id, collapsed, onToggle, mobileOpen = false, onClose }: { id?: string; collapsed: boolean; onToggle: () => void; mobileOpen?: boolean; onClose?: () => void }) {
   const { auth, logout, hasPermission } = useAuth();
   const location = useLocation();
+  const company = auth?.company;
 
   const requiredPermission: Record<string, string> = {
     '/dashboard': 'dashboard.view',
@@ -112,14 +113,14 @@ export default function Sidebar({ id, collapsed, onToggle, mobileOpen = false, o
       <div className="flex items-center justify-between h-16 px-4 border-b border-white/10">
         {!collapsed && (
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 bg-[#f5a623] rounded-lg flex items-center justify-center text-[#0f4c81] font-black text-sm">TV</div>
+            {company?.logoUrl ? <img src={company.logoUrl} alt="Company logo" className="w-8 h-8 rounded-lg object-cover bg-white" /> : <div className="w-8 h-8 bg-[#f5a623] rounded-lg flex items-center justify-center text-[#0f4c81] font-black text-sm">{(company?.name || 'TV').slice(0, 2).toUpperCase()}</div>}
             <div>
-              <div className="font-bold text-sm leading-none">TuaVois</div>
+              <div className="font-bold text-sm leading-none truncate max-w-40">{company?.name || 'TuaVois'}</div>
               <div className="text-xs text-blue-200 leading-none mt-0.5">Travel ERP</div>
             </div>
           </div>
         )}
-        {collapsed && <div className="w-8 h-8 bg-[#f5a623] rounded-lg flex items-center justify-center text-[#0f4c81] font-black text-sm mx-auto">TV</div>}
+        {collapsed && (company?.logoUrl ? <img src={company.logoUrl} alt="Company logo" className="w-8 h-8 rounded-lg object-cover bg-white mx-auto" /> : <div className="w-8 h-8 bg-[#f5a623] rounded-lg flex items-center justify-center text-[#0f4c81] font-black text-sm mx-auto">{(company?.name || 'TV').slice(0, 2).toUpperCase()}</div>)}
         <button onClick={onToggle} className="text-blue-200 hover:text-white transition-colors ml-auto" aria-label="Toggle sidebar">
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             {collapsed

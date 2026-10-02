@@ -2,8 +2,10 @@ import type { ReactNode } from 'react';
 import { useState, useEffect } from 'react';
 import Sidebar from '../components/layout/Sidebar';
 import { Header } from '../components/layout/Header';
+import { useAuth } from '../contexts/AuthContext';
 
 export function AppLayout({ children }: { children: ReactNode }) {
+  const { auth } = useAuth();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -14,6 +16,10 @@ export function AppLayout({ children }: { children: ReactNode }) {
     if (mobileOpen) document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [mobileOpen]);
+
+  useEffect(() => {
+    document.title = auth?.company?.name ? `${auth.company.name} · Travel ERP` : 'Travel ERP';
+  }, [auth?.company?.name]);
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 md:flex">

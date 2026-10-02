@@ -80,6 +80,7 @@ async function main() {
       email: 'info@tuavois.co.ke',
       phone: '+254 700 000 000',
       address: 'Westlands, Nairobi, Kenya',
+      taxId: 'P051234567A',
       website: 'www.tuavois.co.ke',
       currency: 'KES',
       taxRate: 16,
@@ -149,7 +150,7 @@ async function main() {
     { clientNumber: 'CLT-00012', fullName: 'Christine Muthoni', company: 'UNICEF Kenya', phone: '+254 722 200 012', email: 'c.muthoni@unicef.org', nationality: 'Kenyan', address: 'Gigiri, Nairobi', assignedStaffId: admin.id },
   ];
 
-  const clients = await Promise.all(clientData.map((c) => prisma.client.upsert({ where: { clientNumber: c.clientNumber }, update: {}, create: c })));
+  const clients = await Promise.all(clientData.map((c) => prisma.client.upsert({ where: { companyId_clientNumber: { companyId: company.id, clientNumber: c.clientNumber } }, update: { companyId: company.id }, create: { ...c, companyId: company.id } })));
   console.log('✅ Clients created');
 
   // =============================================
@@ -164,7 +165,7 @@ async function main() {
     { prospectNumber: 'PRO-00006', fullName: 'Irene Oloo', company: 'Brookside Dairy', phone: '+254 722 300 006', email: 'i.oloo@brookside.co.ke', status: 'NEW' as const, leadSource: 'Email Campaign', travelInterest: 'Nakuru National Park Day Trip', estimatedValue: 45000, currency: 'KES', assignedStaffId: peter.id },
   ];
 
-  await Promise.all(prospectData.map((p) => prisma.prospect.upsert({ where: { prospectNumber: p.prospectNumber }, update: {}, create: p })));
+  await Promise.all(prospectData.map((p) => prisma.prospect.upsert({ where: { companyId_prospectNumber: { companyId: company.id, prospectNumber: p.prospectNumber } }, update: { companyId: company.id }, create: { ...p, companyId: company.id } })));
   console.log('✅ Prospects created');
 
   // =============================================
@@ -184,7 +185,7 @@ async function main() {
     { tripNumber: 'TRP-2024-0008', name: 'Mt Kenya Trekking Expedition', clientId: clients[7].id, destination: 'Mt Kenya, Kenya', startDate: futureDate(60), endDate: futureDate(64), status: 'PLANNED' as const, estimatedRevenue: 320000, estimatedCost: 190000, currency: 'KES', assignedStaffId: peter.id },
   ];
 
-  const trips = await Promise.all(tripsData.map((t) => prisma.trip.upsert({ where: { tripNumber: t.tripNumber }, update: {}, create: t })));
+  const trips = await Promise.all(tripsData.map((t) => prisma.trip.upsert({ where: { companyId_tripNumber: { companyId: company.id, tripNumber: t.tripNumber } }, update: { companyId: company.id }, create: { ...t, companyId: company.id } })));
   console.log('✅ Trips created');
 
   // =============================================
@@ -228,9 +229,10 @@ async function main() {
   const invoices = await Promise.all(
     invoicesData.map((inv) =>
       prisma.invoice.upsert({
-        where: { invoiceNumber: inv.invoiceNumber }, update: {},
+        where: { companyId_invoiceNumber: { companyId: company.id, invoiceNumber: inv.invoiceNumber } }, update: { companyId: company.id },
         create: { 
           ...inv,
+          companyId: company.id,
           items: {
             create: [{ description: 'Travel Package Services', quantity: 1, pax: 1, unitPrice: inv.subtotal, total: inv.subtotal }],
           },
@@ -258,7 +260,7 @@ async function main() {
   ];
 
   const payments = await Promise.all(
-    paymentsData.map((p) => prisma.payment.upsert({ where: { paymentNumber: p.paymentNumber }, update: {}, create: p }))
+    paymentsData.map((p) => prisma.payment.upsert({ where: { companyId_paymentNumber: { companyId: company.id, paymentNumber: p.paymentNumber } }, update: { companyId: company.id }, create: { ...p, companyId: company.id } }))
   );
 
   // Create receipts for payments
@@ -270,7 +272,7 @@ async function main() {
         update: {},
         create: { 
           receiptNumber: `RCT-2024-${String(receiptNum++).padStart(5, '0')}`,
-          paymentId: pay.id, invoiceId: pay.invoiceId, amount: pay.amount, currency: pay.currency, balanceAfter: 0,
+          paymentId: pay.id, invoiceId: pay.invoiceId, amount: pay.amount, currency: pay.currency, balanceAfter: 0, companyId: company.id,
         },
       })
     )
@@ -306,8 +308,8 @@ async function main() {
   await Promise.all(
     quotationsData.map(({ items, ...q }) =>
       prisma.quotation.upsert({
-        where: { quotationNumber: q.quotationNumber }, update: {},
-        create: {  ...q, items: { create: items } },
+        where: { companyId_quotationNumber: { companyId: company.id, quotationNumber: q.quotationNumber } }, update: { companyId: company.id },
+        create: {  ...q, companyId: company.id, items: { create: items } },
       })
     )
   );
@@ -317,9 +319,9 @@ async function main() {
   // ITINERARIES
   // =============================================
   await prisma.itinerary.upsert({
-    where: { itineraryNumber: 'ITN-2024-0001' }, update: {},
+    where: { companyId_itineraryNumber: { companyId: company.id, itineraryNumber: 'ITN-2024-0001' } }, update: { companyId: company.id },
     create: { 
-      itineraryNumber: 'ITN-2024-0001', tripName: 'Maasai Mara Safari Experience', clientId: clients[0].id, tripId: trips[0].id,
+      itineraryNumber: 'ITN-2024-0001', companyId: company.id, tripName: 'Maasai Mara Safari Experience', clientId: clients[0].id, tripId: trips[0].id,
       departureDate: pastDate(60), returnDate: pastDate(57), departureLocation: 'Nairobi', pickupLocation: 'JKIA Terminal 1A', destination: 'Maasai Mara National Reserve', numTravellers: 3,
       introduction: 'Welcome to your exclusive Maasai Mara Safari Experience! You are about to embark on one of the world\'s most celebrated wildlife adventures. The Maasai Mara is home to the "Big Five" and the spectacular Great Wildebeest Migration.',
       inclusiveOf: '• All game drives in customized 4WD vehicles\n• Full board accommodation at Mara Serena Lodge\n• Airport transfers\n• Services of an experienced safari guide\n• Park entry fees\n• Bottled water during game drives',
@@ -372,27 +374,27 @@ async function main() {
 
   // Hotel Voucher - Diani
   await prisma.voucher.upsert({
-    where: { voucherNumber: 'VCH-2024-0001' }, update: {},
+    where: { companyId_voucherNumber: { companyId: company.id, voucherNumber: 'VCH-2024-0001' } }, update: { companyId: company.id },
     create: { 
-      voucherNumber: 'VCH-2024-0001', type: 'HOTEL', clientId: clients[1].id, tripId: trips[1].id, guestNames: 'Amina Hassan, Mr Hassan',
+      voucherNumber: 'VCH-2024-0001', companyId: company.id, type: 'HOTEL', clientId: clients[1].id, tripId: trips[1].id, guestNames: 'Amina Hassan, Mr Hassan',
       hotelDetails: { create: {  hotel: 'Leopard Beach Resort & Spa', address: 'Diani Beach Road, Kwale County, Kenya', checkIn: pastDate(45), checkOut: pastDate(41), nights: 4, roomType: 'Ocean View Deluxe Room', rooms: 1, mealPlan: 'Full Board', bookingReference: 'LBR-20240120-001', specialRequests: 'Honeymoon setup. Rose petals and champagne on arrival.' } },
     },
   });
 
   // Transfer Voucher - Airport Transfer
   await prisma.voucher.upsert({
-    where: { voucherNumber: 'VCH-2024-0002' }, update: {},
+    where: { companyId_voucherNumber: { companyId: company.id, voucherNumber: 'VCH-2024-0002' } }, update: { companyId: company.id },
     create: { 
-      voucherNumber: 'VCH-2024-0002', type: 'TRANSFER', clientId: clients[1].id, tripId: trips[1].id, guestNames: 'Amina Hassan, Mr Hassan',
+      voucherNumber: 'VCH-2024-0002', companyId: company.id, type: 'TRANSFER', clientId: clients[1].id, tripId: trips[1].id, guestNames: 'Amina Hassan, Mr Hassan',
       transferDetails: { create: {  date: pastDate(45), pickupTime: '09:00', pickupLocation: 'JKIA International Terminal', dropoffLocation: 'Leopard Beach Resort, Diani', vehicleType: 'Toyota Land Cruiser', vehicleRegistration: 'KCQ 789T', driverName: 'Joseph Mutua', driverPhone: '+254 722 500 001', fare: 12000, currency: 'KES', passengers: 2, flightOrTrainDetails: 'KQ 101 arriving at 08:45', instructions: 'Driver will hold a TuaVois sign at arrivals.' } },
     },
   });
 
   // Service Voucher - Combined
   await prisma.voucher.upsert({
-    where: { voucherNumber: 'VCH-2024-0003' }, update: {},
+    where: { companyId_voucherNumber: { companyId: company.id, voucherNumber: 'VCH-2024-0003' } }, update: { companyId: company.id },
     create: { 
-      voucherNumber: 'VCH-2024-0003', type: 'SERVICE', clientId: clients[3].id, tripId: trips[3].id, guestNames: 'Fatuma Ali, Ahmed Ali',
+      voucherNumber: 'VCH-2024-0003', companyId: company.id, type: 'SERVICE', clientId: clients[3].id, tripId: trips[3].id, guestNames: 'Fatuma Ali, Ahmed Ali',
       services: {
         create: [
           { serviceType: 'FLIGHT', description: 'Kenya Airways KQ 450 - Nairobi (NBO) to Zanzibar (ZNZ)', date: futureDate(15), location: 'JKIA, Nairobi', reference: 'KQ450-001', sortOrder: 0 },
@@ -440,7 +442,8 @@ async function main() {
     prisma.user, prisma.client, prisma.prospect, prisma.quotation,
     prisma.invoice, prisma.payment, prisma.receipt, prisma.trip,
     prisma.tripExpense, prisma.itinerary, prisma.voucher,
-    prisma.notification, prisma.auditLog, prisma.letter, prisma.itineraryTemplate
+    prisma.notification, prisma.auditLog, prisma.letter, prisma.itineraryTemplate,
+    prisma.documentSequence, prisma.document
   ];
   for (const model of models) {
     if (model) {

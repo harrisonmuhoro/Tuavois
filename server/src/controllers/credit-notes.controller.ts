@@ -5,12 +5,13 @@ import { NotFoundError, ValidationError } from '../utils/errors';
 import { reserveDocumentNumber } from '../utils/sequences';
 import { runSerializableTransaction } from '../utils/transactions';
 import { paginationMeta, parsePagination } from '../utils/pagination';
+import { tenantScope } from '../utils/tenant';
 
 export const getCreditNotes = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { page, limit, skip } = parsePagination(req.query as Record<string, unknown>);
     const { search = '', status } = req.query as Record<string, string>;
-    const where: any = { ...(status ? { status } : {}) };
+    const where: any = { ...tenantScope(req), ...(status ? { status } : {}) };
     if (search) where.OR = [{ creditNoteNumber: { contains: search } }, { invoice: { invoiceNumber: { contains: search } } }, { client: { fullName: { contains: search } } }];
     const [data, total] = await Promise.all([
       prisma.creditNote.findMany({ where, skip, take: limit, orderBy: { createdAt: 'desc' }, include: { invoice: { select: { invoiceNumber: true } }, client: { select: { fullName: true } }, items: true } }),
@@ -24,13 +25,13 @@ export const createCreditNote = async (req: AuthRequest, res: Response, next: Ne
   try {
     const { invoiceId, amount, currency = 'KES', reason, items = [] } = req.body;
     const creditNote = await prisma.$transaction(async (tx) => {
-      const invoice = await tx.invoice.findUnique({ where: { id: invoiceId } });
+      const invoice = await tx.invoice.findFirst({ where: { id: invoiceId, ...tenantScope(req) } });
       if (!invoice) throw new NotFoundError('Invoice');
       const value = Number(amount);
       if (!Number.isFinite(value) || value <= 0) throw new ValidationError('Credit amount must be greater than zero');
       if (value > Number(invoice.balance)) throw new ValidationError('Credit amount cannot exceed the invoice balance');
-      const creditNoteNumber = await reserveDocumentNumber(tx, `credit-note-${new Date().getFullYear()}`, `CN-${new Date().getFullYear()}`, 4);
-      return tx.creditNote.create({ data: { creditNoteNumber, invoiceId, clientId: invoice.clientId, amount: value, currency, reason, items: { create: items.map((item: any) => ({ description: item.description, quantity: item.quantity || 1, unitPrice: item.unitPrice || item.total || 0, total: item.total || item.quantity * item.unitPrice || 0 })) } }, include: { invoice: true, client: true, items: true } });
+      const creditNoteNumber = await reserveDocumentNumber(tx, `credit-note-${new Date().getFullYear()}`, `CN-${new Date().getFullYear()}`, 4, req.companyId);
+      return tx.creditNote.create({ data: { creditNoteNumber, companyId: req.companyId, invoiceId, clientId: invoice.clientId, amount: value, currency, reason, items: { create: items.map((item: any) => ({ description: item.description, quantity: item.quantity || 1, unitPrice: item.unitPrice || item.total || 0, total: item.total || item.quantity * item.unitPrice || 0 })) } }, include: { invoice: true, client: true, items: true } });
     });
     res.status(201).json({ success: true, message: 'Credit note created successfully', data: creditNote });
   } catch (error) { next(error); }
@@ -39,7 +40,7 @@ export const createCreditNote = async (req: AuthRequest, res: Response, next: Ne
 export const applyCreditNote = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const result = await runSerializableTransaction(prisma, async (tx) => {
-      const note = await tx.creditNote.findUnique({ where: { id: req.params.id }, include: { invoice: true } });
+      const note = await tx.creditNote.findFirst({ where: { id: req.params.id, ...tenantScope(req) }, include: { invoice: true } });
       if (!note) throw new NotFoundError('Credit note');
       if (note.status !== 'ISSUED') throw new ValidationError('Only issued credit notes can be applied');
       const remaining = Number(note.amount) - Number(note.amountApplied);
@@ -49,7 +50,7 @@ export const applyCreditNote = async (req: AuthRequest, res: Response, next: Nex
       const nextApplied = Number(note.amountApplied) + amount;
       const invoice = await tx.invoice.update({ where: { id: note.invoiceId }, data: { creditApplied: { increment: amount }, balance: { decrement: amount }, status: amount === Number(note.invoice.balance) ? 'PAID' : note.invoice.status } });
       const updated = await tx.creditNote.update({ where: { id: note.id }, data: { status: nextApplied === Number(note.amount) ? 'APPLIED' : 'ISSUED', amountApplied: nextApplied } });
-      await tx.auditLog.create({ data: { userId: req.user!.id, action: 'CREDIT_NOTE_APPLIED', entity: 'CreditNote', entityId: note.id } });
+      await tx.auditLog.create({ data: { userId: req.user!.id, companyId: req.companyId, action: 'CREDIT_NOTE_APPLIED', entity: 'CreditNote', entityId: note.id } });
       return { note: updated, invoice };
     });
     res.json({ success: true, message: 'Credit note applied successfully', data: result });
@@ -59,11 +60,11 @@ export const applyCreditNote = async (req: AuthRequest, res: Response, next: Nex
 export const voidCreditNote = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const note = await prisma.$transaction(async (tx) => {
-      const current = await tx.creditNote.findUnique({ where: { id: req.params.id } });
+      const current = await tx.creditNote.findFirst({ where: { id: req.params.id, ...tenantScope(req) } });
       if (!current) throw new NotFoundError('Credit note');
       if (current.status !== 'ISSUED' || Number(current.amountApplied) !== 0) throw new ValidationError('Only unapplied issued credit notes can be voided');
       const updated = await tx.creditNote.update({ where: { id: current.id }, data: { status: 'VOIDED' } });
-      await tx.auditLog.create({ data: { userId: req.user!.id, action: 'CREDIT_NOTE_VOIDED', entity: 'CreditNote', entityId: current.id } });
+      await tx.auditLog.create({ data: { userId: req.user!.id, companyId: req.companyId, action: 'CREDIT_NOTE_VOIDED', entity: 'CreditNote', entityId: current.id } });
       return updated;
     });
     res.json({ success: true, message: 'Credit note voided successfully', data: note });

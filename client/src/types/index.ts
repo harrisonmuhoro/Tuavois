@@ -42,14 +42,32 @@ export interface User {
   createdAt: string;
 }
 
+export interface Company {
+  id: string;
+  name: string;
+  email?: string;
+  phone?: string;
+  address?: string;
+  taxId?: string;
+  website?: string;
+  logoUrl?: string;
+  currency: string;
+  taxRate: number;
+  taxName: string;
+  kraPin?: string;
+  bankDetails?: string;
+}
+
 export interface AuthState {
   token: string;
+  company: Company;
   user: {
     id: string;
     name: string;
     email: string;
     role: string;
     department?: string;
+    companyId: string;
     permissions: string[];
   };
 }

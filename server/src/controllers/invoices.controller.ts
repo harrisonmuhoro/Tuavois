@@ -5,6 +5,7 @@ import { NotFoundError, ValidationError } from '../utils/errors';
 import { reserveDocumentNumber } from '../utils/sequences';
 import { processOverdueInvoices } from '../utils/overdue-invoices';
 import { paginationMeta, parsePagination } from '../utils/pagination';
+import { assertTenantRecord, tenantScope } from '../utils/tenant';
 
 export const calculateInvoiceTotals = (items: { quantity: number; pax: number; unitPrice: number }[], discountType: 'AMOUNT' | 'PERCENTAGE', discountValue: number, taxRate: number) => {
   const subtotal = items.reduce((sum, item) => sum + item.quantity * item.unitPrice, 0);
@@ -24,7 +25,7 @@ export const getInvoices = async (req: AuthRequest, res: Response, next: NextFun
     const safeSort = ['createdAt', 'invoiceNumber', 'invoiceDate', 'dueDate', 'grandTotal', 'balance'].includes(sortBy) ? sortBy : 'createdAt';
     const safeOrder = sortOrder === 'asc' ? 'asc' : 'desc';
 
-    const where: any = {};
+    const where: any = { ...tenantScope(req) };
     if (search) where.OR = [{ invoiceNumber: { contains: search } }];
     if (status) where.status = status;
     if (clientId) where.clientId = clientId;
@@ -47,7 +48,7 @@ export const getInvoices = async (req: AuthRequest, res: Response, next: NextFun
 export const getInvoiceById = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const invoice = await prisma.invoice.findFirst({
-      where: { id: req.params.id, ...(req.user?.roleName === 'SALES_CONSULTANT' ? { createdById: req.user.id } : {}) },
+      where: { id: req.params.id, ...tenantScope(req), ...(req.user?.roleName === 'SALES_CONSULTANT' ? { createdById: req.user.id } : {}) },
       include: { client: true, trip: true, items: { orderBy: { sortOrder: 'asc' } }, payments: { include: { receipt: true } }, creditNotes: true, createdBy: { select: { id: true, name: true } } },
     });
     if (!invoice) throw new NotFoundError('Invoice');
@@ -57,13 +58,16 @@ export const getInvoiceById = async (req: AuthRequest, res: Response, next: Next
 
 export const createInvoice = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { items, discountType = 'AMOUNT', discountValue = 0, taxRate = 0, ...rest } = req.body;
+    const { items, discountType = 'AMOUNT', discountValue = 0, taxRate = 0, companyId: _companyId, ...rest } = req.body;
+    await assertTenantRecord(prisma, 'client', rest.clientId, req.companyId!, 'Client');
+    await assertTenantRecord(prisma, 'trip', rest.tripId, req.companyId!, 'Trip');
     const { subtotal, discountAmount, taxAmount, grandTotal } = calculateInvoiceTotals(items, discountType, discountValue, taxRate);
     const invoice = await prisma.$transaction(async (tx) => {
-      const invoiceNumber = await reserveDocumentNumber(tx, `invoice-${new Date().getFullYear()}`, `INV-${new Date().getFullYear()}`, 4);
+      const invoiceNumber = await reserveDocumentNumber(tx, `invoice-${new Date().getFullYear()}`, `INV-${new Date().getFullYear()}`, 4, req.companyId);
       return tx.invoice.create({ data: {
         ...rest, invoiceNumber, discountType, discountValue, discountAmount, taxRate, taxAmount,
         subtotal, grandTotal, balance: grandTotal, status: 'DRAFT', createdById: req.user!.id,
+        companyId: req.user!.companyId,
         invoiceDate: new Date(rest.invoiceDate), dueDate: new Date(rest.dueDate),
         items: { create: items.map((item: any, idx: number) => ({ ...item, total: item.quantity * item.unitPrice, sortOrder: idx })) },
       }, include: { client: true, items: { orderBy: { sortOrder: 'asc' } } } });
@@ -74,11 +78,13 @@ export const createInvoice = async (req: AuthRequest, res: Response, next: NextF
 
 export const updateInvoice = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const existing = await prisma.invoice.findFirst({ where: { id: req.params.id, ...(req.user?.roleName === 'SALES_CONSULTANT' ? { createdById: req.user.id } : {}) } });
+    const existing = await prisma.invoice.findFirst({ where: { id: req.params.id, ...tenantScope(req), ...(req.user?.roleName === 'SALES_CONSULTANT' ? { createdById: req.user.id } : {}) } });
     if (!existing) throw new NotFoundError('Invoice');
     if (['PAID', 'CANCELLED'].includes(existing.status)) throw new ValidationError(`Cannot edit a ${existing.status.toLowerCase()} invoice`);
 
-    const { items, discountType = 'AMOUNT', discountValue = 0, taxRate = 0, ...rest } = req.body;
+    const { items, discountType = 'AMOUNT', discountValue = 0, taxRate = 0, companyId: _companyId, ...rest } = req.body;
+    await assertTenantRecord(prisma, 'client', rest.clientId, req.companyId!, 'Client');
+    await assertTenantRecord(prisma, 'trip', rest.tripId, req.companyId!, 'Trip');
     const { subtotal, discountAmount, taxAmount, grandTotal } = calculateInvoiceTotals(items, discountType, discountValue, taxRate);
     const balance = grandTotal - Number(existing.amountPaid) - Number(existing.creditApplied);
 
@@ -101,7 +107,7 @@ export const updateInvoice = async (req: AuthRequest, res: Response, next: NextF
 export const updateInvoiceStatus = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { status } = req.body;
-    const existing = await prisma.invoice.findFirst({ where: { id: req.params.id, ...(req.user?.roleName === 'SALES_CONSULTANT' ? { createdById: req.user.id } : {}) } });
+    const existing = await prisma.invoice.findFirst({ where: { id: req.params.id, ...tenantScope(req), ...(req.user?.roleName === 'SALES_CONSULTANT' ? { createdById: req.user.id } : {}) } });
     if (!existing) throw new NotFoundError('Invoice');
     const invoice = await prisma.invoice.update({ where: { id: existing.id }, data: { status } });
     res.json({ success: true, message: 'Invoice status updated', data: invoice });

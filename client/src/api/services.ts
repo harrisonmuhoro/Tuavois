@@ -6,10 +6,16 @@ import type {
 
 // ---- AUTH ----
 export const authApi = {
-  login: (data: { email: string; password: string }) => api.post<ApiResponse<{ token: string; user: any }>>('/auth/login', data),
+  login: (data: { email: string; password: string }) => api.post<ApiResponse<{ token: string; user: any; company: import('../types').Company }>>('/auth/login', data),
   logout: () => api.post('/auth/logout'),
-  me: () => api.get<ApiResponse<User>>('/auth/me'),
+  me: () => api.get<ApiResponse<User & { company: import('../types').Company }>>('/auth/me'),
   changePassword: (data: { currentPassword: string; newPassword: string }) => api.put('/auth/change-password', data),
+};
+
+// ---- COMPANY PROVISIONING ----
+export const companiesApi = {
+  provision: (data: { company: Record<string, unknown>; owner: { name: string; email: string; password: string; phone?: string } }) =>
+    api.post<ApiResponse<any>>('/companies', data),
 };
 
 // ---- ADMIN ----

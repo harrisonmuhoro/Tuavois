@@ -5,13 +5,15 @@ import { UnauthorizedError, ForbiddenError } from '../utils/errors';
 
 export interface AuthRequest extends Request {
   params: Record<string, string>;
+  /** Trusted tenant context populated by authenticate from the database user. */
+  companyId?: string;
   user?: {
     id: string;
     email: string;
     roleId: string;
     roleName: string;
     department?: string | null;
-    companyId: string | null;
+    companyId: string;
     permissions: string[];
   };
 }
@@ -44,14 +46,19 @@ export const authenticate = async (
 
     if (!user) throw new UnauthorizedError('User not found');
     if (user.status !== 'ACTIVE') throw new UnauthorizedError('Account is inactive');
+    if (!user.companyId) throw new UnauthorizedError('User is not assigned to a company');
+    if (decoded.companyId && decoded.companyId !== user.companyId) {
+      throw new UnauthorizedError('Tenant context is no longer valid');
+    }
 
+    req.companyId = user.companyId;
     req.user = {
       id: user.id,
       email: user.email,
       roleId: user.roleId,
       roleName: user.role.name,
       department: user.department,
-      companyId: user.companyId ?? decoded.companyId ?? null,
+      companyId: user.companyId,
       permissions: user.role.rolePermissions.map((p) => p.permission.name),
     };
 

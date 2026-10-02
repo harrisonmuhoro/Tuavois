@@ -3,9 +3,10 @@ import prisma from '../config/database';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { NotFoundError } from '../utils/errors';
 import { paginationMeta, parsePagination } from '../utils/pagination';
+import { assertTenantRecord, tenantScope } from '../utils/tenant';
 
-const generateClientNumber = async (): Promise<string> => {
-  const count = await prisma.client.count();
+const generateClientNumber = async (req: AuthRequest): Promise<string> => {
+  const count = await prisma.client.count({ where: tenantScope(req) });
   return `CLT-${String(count + 1).padStart(5, '0')}`;
 };
 
@@ -18,7 +19,7 @@ export const getClients = async (req: AuthRequest, res: Response, next: NextFunc
     const safeSort = ['createdAt', 'fullName', 'clientNumber', 'company'].includes(sortBy) ? sortBy : 'createdAt';
     const safeOrder = sortOrder === 'asc' ? 'asc' : 'desc';
 
-    const where: any = {};
+    const where: any = { ...tenantScope(req) };
     if (search) {
       where.OR = [
         { fullName: { contains: search } },
@@ -57,7 +58,7 @@ export const getClients = async (req: AuthRequest, res: Response, next: NextFunc
 export const getClientById = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const client = await prisma.client.findFirst({
-      where: { id: req.params.id, ...(req.user?.roleName === 'SALES_CONSULTANT' ? { assignedStaffId: req.user.id } : {}) },
+      where: { id: req.params.id, ...tenantScope(req), ...(req.user?.roleName === 'SALES_CONSULTANT' ? { assignedStaffId: req.user.id } : {}) },
       include: {
         assignedStaff: { select: { id: true, name: true } },
         quotations: { orderBy: { createdAt: 'desc' }, take: 10 },
@@ -76,19 +77,20 @@ export const getClientById = async (req: AuthRequest, res: Response, next: NextF
 
 export const getClientActivity = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const client = await prisma.client.findFirst({ where: { id: req.params.id, ...(req.user?.roleName === 'SALES_CONSULTANT' ? { assignedStaffId: req.user.id } : {}) }, select: { id: true, quotations: { select: { id: true } }, invoices: { select: { id: true } }, trips: { select: { id: true } }, payments: { select: { id: true } } } });
+    const client = await prisma.client.findFirst({ where: { id: req.params.id, ...tenantScope(req), ...(req.user?.roleName === 'SALES_CONSULTANT' ? { assignedStaffId: req.user.id } : {}) }, select: { id: true, quotations: { select: { id: true } }, invoices: { select: { id: true } }, trips: { select: { id: true } }, payments: { select: { id: true } } } });
     if (!client) throw new NotFoundError('Client');
     const entityIds = [client.id, ...client.quotations.map((item) => item.id), ...client.invoices.map((item) => item.id), ...client.trips.map((item) => item.id), ...client.payments.map((item) => item.id)];
-    const activity = await prisma.auditLog.findMany({ where: { entityId: { in: entityIds } }, orderBy: { createdAt: 'desc' }, take: 100, include: { user: { select: { id: true, name: true, email: true } } } });
+    const activity = await prisma.auditLog.findMany({ where: { ...tenantScope(req), entityId: { in: entityIds } }, orderBy: { createdAt: 'desc' }, take: 100, include: { user: { select: { id: true, name: true, email: true } } } });
     res.json({ success: true, data: activity });
   } catch (error) { next(error); }
 };
 
 export const createClient = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const clientNumber = await generateClientNumber();
+    await assertTenantRecord(prisma, 'user', req.body.assignedStaffId, req.companyId!, 'Staff member');
+    const clientNumber = await generateClientNumber(req);
     const client = await prisma.client.create({
-      data: { ...req.body, clientNumber },
+      data: { ...req.body, clientNumber, companyId: req.user!.companyId },
       include: { assignedStaff: { select: { id: true, name: true } } },
     });
     res.status(201).json({ success: true, message: 'Client created successfully', data: client });
@@ -99,11 +101,13 @@ export const createClient = async (req: AuthRequest, res: Response, next: NextFu
 
 export const updateClient = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const existing = await prisma.client.findFirst({ where: { id: req.params.id, ...(req.user?.roleName === 'SALES_CONSULTANT' ? { assignedStaffId: req.user.id } : {}) } });
+    const existing = await prisma.client.findFirst({ where: { id: req.params.id, ...tenantScope(req), ...(req.user?.roleName === 'SALES_CONSULTANT' ? { assignedStaffId: req.user.id } : {}) } });
     if (!existing) throw new NotFoundError('Client');
+    await assertTenantRecord(prisma, 'user', req.body.assignedStaffId, req.companyId!, 'Staff member');
+    const { companyId: _companyId, ...data } = req.body;
     const client = await prisma.client.update({
       where: { id: existing.id },
-      data: req.body,
+      data,
       include: { assignedStaff: { select: { id: true, name: true } } },
     });
     res.json({ success: true, message: 'Client updated successfully', data: client });
@@ -114,7 +118,7 @@ export const updateClient = async (req: AuthRequest, res: Response, next: NextFu
 
 export const deleteClient = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const result = await prisma.client.deleteMany({ where: { id: req.params.id, ...(req.user?.roleName === 'SALES_CONSULTANT' ? { assignedStaffId: req.user.id } : {}) } });
+    const result = await prisma.client.deleteMany({ where: { id: req.params.id, ...tenantScope(req), ...(req.user?.roleName === 'SALES_CONSULTANT' ? { assignedStaffId: req.user.id } : {}) } });
     if (!result.count) throw new NotFoundError('Client');
     res.json({ success: true, message: 'Client deleted successfully', data: null });
   } catch (error) {

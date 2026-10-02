@@ -3,9 +3,10 @@ import prisma from '../config/database';
 import { AuthRequest } from '../middleware/auth.middleware';
 import { NotFoundError, ValidationError } from '../utils/errors';
 import { paginationMeta, parsePagination } from '../utils/pagination';
+import { assertTenantRecord, tenantScope } from '../utils/tenant';
 
-const generateVoucherNumber = async (): Promise<string> => {
-  const count = await prisma.voucher.count();
+const generateVoucherNumber = async (req: AuthRequest): Promise<string> => {
+  const count = await prisma.voucher.count({ where: tenantScope(req) });
   return `VCH-${new Date().getFullYear()}-${String(count + 1).padStart(4, '0')}`;
 };
 const operationsScope = (req: AuthRequest) => req.user?.roleName === 'OPERATIONS_STAFF' ? { trip: { assignedStaffId: req.user.id } } : {};
@@ -14,7 +15,7 @@ export const getVouchers = async (req: AuthRequest, res: Response, next: NextFun
   try {
     const { page, limit, skip } = parsePagination(req.query as Record<string, unknown>);
     const { type, clientId, tripId, status } = req.query as Record<string, string>;
-    const where: any = {};
+    const where: any = { ...tenantScope(req) };
     if (type) where.type = type;
     if (clientId) where.clientId = clientId;
     if (tripId) where.tripId = tripId;
@@ -45,7 +46,7 @@ export const getVoucherOperations = async (req: AuthRequest, res: Response, next
     const { focus = 'check-in', date } = req.query as Record<string, string>;
     if (!['check-in', 'check-out'].includes(focus)) throw new ValidationError('Invalid voucher operation focus');
     const dateFilter = focus === 'check-in' ? { checkIn: operationDateRange(date) } : { checkOut: operationDateRange(date) };
-    const vouchers = await prisma.voucher.findMany({ where: { type: 'HOTEL', hotelDetails: dateFilter, ...operationsScope(req) }, orderBy: { createdAt: 'desc' }, include: { client: { select: { id: true, fullName: true, phone: true } }, trip: { select: { id: true, name: true, tripNumber: true } }, hotelDetails: true } });
+    const vouchers = await prisma.voucher.findMany({ where: { ...tenantScope(req), type: 'HOTEL', hotelDetails: dateFilter, ...operationsScope(req) }, orderBy: { createdAt: 'desc' }, include: { client: { select: { id: true, fullName: true, phone: true } }, trip: { select: { id: true, name: true, tripNumber: true } }, hotelDetails: true } });
     res.json({ success: true, data: vouchers });
   } catch (error) { next(error); }
 };
@@ -54,7 +55,7 @@ export const completeVoucherOperation = async (req: AuthRequest, res: Response, 
   try {
     const { operation } = req.body as { operation?: string };
     if (!['check-in', 'check-out'].includes(operation || '')) throw new ValidationError('Invalid voucher operation');
-    const voucher = await prisma.voucher.findFirst({ where: { id: req.params.id, ...operationsScope(req) }, include: { hotelDetails: true } });
+    const voucher = await prisma.voucher.findFirst({ where: { id: req.params.id, ...tenantScope(req), ...operationsScope(req) }, include: { hotelDetails: true } });
     if (!voucher?.hotelDetails) throw new NotFoundError('Hotel voucher');
     const data = operation === 'check-in' ? { checkedInAt: new Date() } : { checkedOutAt: new Date() };
     const updated = await prisma.hotelVoucher.update({ where: { voucherId: voucher.id }, data });
@@ -65,7 +66,7 @@ export const completeVoucherOperation = async (req: AuthRequest, res: Response, 
 export const getVoucherById = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const voucher = await prisma.voucher.findFirst({
-      where: { id: req.params.id, ...operationsScope(req) },
+      where: { id: req.params.id, ...tenantScope(req), ...operationsScope(req) },
       include: { client: true, trip: true, hotelDetails: true, transferDetails: true, services: { orderBy: { sortOrder: 'asc' } } },
     });
     if (!voucher) throw new NotFoundError('Voucher');
@@ -76,11 +77,13 @@ export const getVoucherById = async (req: AuthRequest, res: Response, next: Next
 export const createVoucher = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { type, clientId, tripId, guestNames, notes, hotelDetails, transferDetails, services } = req.body;
-    const voucherNumber = await generateVoucherNumber();
+    await assertTenantRecord(prisma, 'client', clientId, req.companyId!, 'Client');
+    await assertTenantRecord(prisma, 'trip', tripId, req.companyId!, 'Trip');
+    const voucherNumber = await generateVoucherNumber(req);
 
     const voucher = await prisma.voucher.create({
       data: {
-        voucherNumber, type, clientId, tripId, guestNames, notes,
+        voucherNumber, type, clientId, tripId, guestNames, notes, companyId: req.companyId,
         ...(type === 'HOTEL' && hotelDetails ? { hotelDetails: { create: { ...hotelDetails, checkIn: new Date(hotelDetails.checkIn), checkOut: new Date(hotelDetails.checkOut) } } } : {}),
         ...(type === 'TRANSFER' && transferDetails ? { transferDetails: { create: { ...transferDetails, date: new Date(transferDetails.date) } } } : {}),
         ...(type === 'SERVICE' && services ? { services: { create: services.map((s: any, idx: number) => ({ ...s, date: s.date ? new Date(s.date) : undefined, sortOrder: idx })) } } : {}),
@@ -102,7 +105,7 @@ const allowedTransitions: Record<string, string[]> = {
 export const updateVoucherStatus = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { status, supplierConfirmationRef } = req.body;
-    const current = await prisma.voucher.findFirst({ where: { id: req.params.id, ...operationsScope(req) } });
+    const current = await prisma.voucher.findFirst({ where: { id: req.params.id, ...tenantScope(req), ...operationsScope(req) } });
     if (!current) throw new NotFoundError('Voucher');
     if (!allowedTransitions[current.status].includes(status)) throw new ValidationError(`Cannot change voucher status from ${current.status} to ${status}`);
     const updated = await prisma.voucher.update({ where: { id: current.id }, data: { status, supplierConfirmationRef, supplierConfirmedAt: status === 'CONFIRMED' ? new Date() : current.supplierConfirmedAt } });

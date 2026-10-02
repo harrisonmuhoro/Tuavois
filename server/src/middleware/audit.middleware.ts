@@ -13,6 +13,7 @@ export const auditLog = (action: string, entity: string) => {
           .create({
             data: {
               userId: req.user.id,
+              companyId: req.companyId,
               action,
               entity,
               entityId: data?.data?.id || req.params.id,

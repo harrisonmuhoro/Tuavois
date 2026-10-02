@@ -183,6 +183,29 @@ export const companySettingsSchema = z.object({
   bankDetails: optionalText,
 }).strict();
 
+export const companyProvisionSchema = z.object({
+  company: z.object({
+    name: z.string().trim().min(2).max(160),
+    email: z.string().trim().email().optional().or(z.literal('')),
+    phone: z.string().trim().max(40).optional(),
+    address: optionalText,
+    website: z.string().trim().url().optional().or(z.literal('')),
+    logoUrl: z.string().trim().url().optional().or(z.literal('')),
+    taxId: z.string().trim().max(40).optional(),
+    currency: currency.default('KES'),
+    taxRate: z.number().finite().min(0).max(100).default(16),
+    taxName: z.string().trim().max(50).default('VAT'),
+    kraPin: z.string().trim().max(40).optional(),
+    bankDetails: optionalText,
+  }).strict(),
+  owner: z.object({
+    name: z.string().trim().min(2).max(120),
+    email: z.string().trim().email(),
+    password: z.string().min(10),
+    phone: z.string().trim().max(40).optional(),
+  }).strict(),
+}).strict();
+
 export const participantSchema = z.object({
   fullName: z.string().trim().min(2).max(160), idNumber: z.string().trim().max(80).optional(),
   phone: z.string().trim().max(40).optional(), email: z.string().trim().email().optional().or(z.literal('')),
