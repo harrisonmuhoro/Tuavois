@@ -7,6 +7,7 @@ const productionEnvironment = z.object({
   JWT_EXPIRES_IN: z.string().min(1),
   CLIENT_URL: z.string().url(),
   UPLOAD_DIR: z.string().min(1),
+  ALLOW_PUBLIC_COMPANY_PROVISIONING: z.enum(['true', 'false']).default('false'),
 });
 
 /** Fails fast only in production, leaving local developer defaults usable. */

@@ -23,7 +23,10 @@ const positiveMoney = z.number().finite().positive();
 export const loginSchema = z.object({
   email: z.string().email('Invalid email'),
   password: z.string().min(1, 'Password required'),
+  otp: z.string().regex(/^\d{6}$/, 'MFA code must be 6 digits').optional(),
 }).strict();
+
+export const mfaCodeSchema = z.object({ code: z.string().regex(/^\d{6}$/, 'MFA code must be 6 digits') }).strict();
 
 // Client validators
 export const clientSchema = z.object({
@@ -204,6 +207,23 @@ export const companyProvisionSchema = z.object({
     password: z.string().min(10),
     phone: z.string().trim().max(40).optional(),
   }).strict(),
+}).strict();
+
+export const systemCompanyUpdateSchema = companySettingsSchema.extend({
+  status: z.enum(['ACTIVE', 'SUSPENDED']).optional(),
+}).strict();
+
+export const systemUserUpdateSchema = z.object({
+  name: z.string().trim().min(2).max(120).optional(),
+  phone: z.string().trim().max(40).optional(),
+  department: z.string().trim().max(120).optional(),
+  status: z.enum(['ACTIVE', 'INACTIVE', 'SUSPENDED']).optional(),
+  roleId: id.optional(),
+  companyId: id.nullable().optional(),
+}).strict();
+
+export const systemUserSuspendSchema = z.object({
+  reason: z.string().trim().min(3).max(500),
 }).strict();
 
 export const participantSchema = z.object({

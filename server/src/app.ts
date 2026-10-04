@@ -31,6 +31,7 @@ import creditNotesRoutes from './routes/credit-notes.routes';
 import lettersRoutes from './routes/letters.routes';
 import searchRoutes from './routes/search.routes';
 import companiesRoutes from './routes/companies.routes';
+import systemRoutes from './routes/system.routes';
 
 validateEnvironment();
 const app = express();
@@ -64,9 +65,6 @@ app.use('/api/v1/companies', companyProvisioningLimiter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Static uploads
-app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
-
 // Health check
 app.get('/api/v1/health', (_req, res) => {
   res.json({ success: true, message: 'TuaVois API is running', timestamp: new Date().toISOString() });
@@ -89,6 +87,7 @@ app.get('/api/v1/receipts', authenticate, authorize('payments.view'), getReceipt
 // Module routes
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/companies', companiesRoutes);
+app.use('/api/v1/system', systemRoutes);
 app.use('/api/v1/clients', clientRoutes);
 app.use('/api/v1/prospects', prospectRoutes);
 app.use('/api/v1/quotations', quotationRoutes);

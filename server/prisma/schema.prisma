@@ -16,7 +16,7 @@ datasource db {
 
 model Role {
   id              String           @id @default(cuid())
-  name            String           @unique // ADMIN, STAFF, MANAGER
+  name            String           @unique // ADMIN, STAFF, SUPERADMIN, etc.
   description     String?
   rolePermissions RolePermission[]
   users           User[]
@@ -56,6 +56,11 @@ model User {
   phone       String?
   department  String?
   status      UserStatus @default(ACTIVE)
+  scope       UserScope  @default(COMPANY)
+  mustChangePassword Boolean @default(false)
+  mfaEnabled Boolean @default(false)
+  mfaSecret String?
+  tokenVersion Int @default(0)
   roleId      String
   role        Role       @relation(fields: [roleId], references: [id])
   dateJoined  DateTime   @default(now())
@@ -88,6 +93,11 @@ enum UserStatus {
   ACTIVE
   INACTIVE
   SUSPENDED
+}
+
+enum UserScope {
+  COMPANY
+  GLOBAL
 }
 
 // =============================================
@@ -768,6 +778,7 @@ model Company {
   currency           String              @default("KES")
   taxRate            Decimal             @default(16) @db.Decimal(5, 2)
   taxName            String              @default("VAT")
+  status             CompanyStatus      @default(ACTIVE)
   kraPin             String?
   bankDetails        String?             @db.Text
   updatedAt          DateTime            @updatedAt
@@ -791,6 +802,11 @@ model Company {
   documents          Document[]
 
   @@map("companies")
+}
+
+enum CompanyStatus {
+  ACTIVE
+  SUSPENDED
 }
 
 model Currency {

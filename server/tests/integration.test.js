@@ -159,4 +159,14 @@ test('database-backed tenant isolation protects records and report exports', { s
   const workbookText = JSON.stringify(workbook.SheetNames.map((name) => xlsx.utils.sheet_to_json(workbook.Sheets[name])));
   assert.match(workbookText, /Private Destination 0/);
   assert.doesNotMatch(workbookText, /Private Destination 1/);
+
+  const clientsExport = await request('/reports/exports/clients');
+  assert.equal(clientsExport.status, 200);
+  const clientsWorkbook = xlsx.read(Buffer.from(await clientsExport.arrayBuffer()), { type: 'buffer' });
+  const clientsText = JSON.stringify(clientsWorkbook.SheetNames.map((name) => xlsx.utils.sheet_to_json(clientsWorkbook.Sheets[name])));
+  assert.match(clientsText, /Tenant 0 Private Client/);
+  assert.doesNotMatch(clientsText, /Tenant 1 Private Client/);
+
+  const prospectsExport = await request('/reports/exports/prospects');
+  assert.equal(prospectsExport.status, 200);
 });

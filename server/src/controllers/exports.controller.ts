@@ -54,13 +54,13 @@ export const exportReport = async (req: AuthRequest, res: Response, next: NextFu
       return;
     }
     if (type === 'clients') {
-      const where: any = { ...(filters.search ? { OR: [{ fullName: { contains: filters.search } }, { email: { contains: filters.search } }, { company: { contains: filters.search } }] } : {}) };
+      const where: any = { ...tenantScope(req), ...(filters.search ? { OR: [{ fullName: { contains: filters.search } }, { email: { contains: filters.search } }, { company: { contains: filters.search } }] } : {}) };
       const rows = await prisma.client.findMany({ where, include: { assignedStaff: { select: { name: true } } }, orderBy: { createdAt: 'desc' } });
       await sendWorkbook(res, 'clients.xlsx', 'Clients', ['Client number', 'Name', 'Company', 'Email', 'Phone', 'Nationality', 'Assigned staff', 'Created'], rows.map((row) => ({ 'Client number': row.clientNumber, Name: row.fullName, Company: row.company || '', Email: row.email || '', Phone: row.phone, Nationality: row.nationality, 'Assigned staff': row.assignedStaff?.name || '', Created: row.createdAt.toISOString() })));
       return;
     }
     if (type === 'prospects') {
-      const where: any = { ...(filters.status ? { status: filters.status } : {}), ...(filters.search ? { OR: [{ fullName: { contains: filters.search } }, { email: { contains: filters.search } }, { phone: { contains: filters.search } }] } : {}) };
+      const where: any = { ...tenantScope(req), ...(filters.status ? { status: filters.status } : {}), ...(filters.search ? { OR: [{ fullName: { contains: filters.search } }, { email: { contains: filters.search } }, { phone: { contains: filters.search } }] } : {}) };
       const rows = await prisma.prospect.findMany({ where, include: { assignedStaff: { select: { name: true } } }, orderBy: { createdAt: 'desc' } });
       await sendWorkbook(res, 'prospects.xlsx', 'Prospects', ['Prospect number', 'Name', 'Company', 'Email', 'Phone', 'Status', 'Interest', 'Estimated value', 'Currency', 'Assigned staff'], rows.map((row) => ({ 'Prospect number': row.prospectNumber, Name: row.fullName, Company: row.company || '', Email: row.email || '', Phone: row.phone, Status: row.status, Interest: row.travelInterest || '', 'Estimated value': Number(row.estimatedValue || 0), Currency: row.currency, 'Assigned staff': row.assignedStaff?.name || '' })));
       return;

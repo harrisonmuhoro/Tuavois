@@ -1,6 +1,7 @@
 // Shared TypeScript types for the TuaVois ERP
 
-export type UserRole = 'ADMIN' | 'STAFF' | 'MANAGER' | 'SALES_CONSULTANT' | 'OPERATIONS_STAFF' | 'ACCOUNTANT';
+export type UserRole = 'ADMIN' | 'STAFF' | 'MANAGER' | 'SALES_CONSULTANT' | 'OPERATIONS_STAFF' | 'ACCOUNTANT' | 'SUPERADMIN';
+export type UserScope = 'COMPANY' | 'GLOBAL';
 export type UserStatus = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
 export type ProspectStatus = 'NEW' | 'CONTACTED' | 'QUALIFIED' | 'QUOTATION_SENT' | 'NEGOTIATION' | 'WON' | 'LOST';
 export type QuotationStatus = 'DRAFT' | 'SENT' | 'ACCEPTED' | 'REJECTED' | 'EXPIRED' | 'CONVERTED';
@@ -54,20 +55,22 @@ export interface Company {
   currency: string;
   taxRate: number;
   taxName: string;
+  status?: 'ACTIVE' | 'SUSPENDED';
   kraPin?: string;
   bankDetails?: string;
 }
 
 export interface AuthState {
   token: string;
-  company: Company;
+  company: Company | null;
   user: {
     id: string;
     name: string;
     email: string;
     role: string;
     department?: string;
-    companyId: string;
+    companyId: string | null;
+    scope?: UserScope;
     permissions: string[];
   };
 }

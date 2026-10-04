@@ -13,8 +13,10 @@ export interface AuthRequest extends Request {
     roleId: string;
     roleName: string;
     department?: string | null;
-    companyId: string;
+    companyId: string | null;
+    scope: 'COMPANY' | 'GLOBAL';
     permissions: string[];
+    tokenVersion: number;
   };
 }
 
@@ -33,11 +35,12 @@ export const authenticate = async (
     const secret = process.env.JWT_SECRET;
     if (!secret) throw new UnauthorizedError('Server configuration error');
 
-    const decoded = jwt.verify(token, secret) as { userId: string; companyId?: string | null };
+    const decoded = jwt.verify(token, secret) as { userId: string; companyId?: string | null; tokenVersion?: number };
 
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
       include: {
+        company: true,
         role: {
           include: { rolePermissions: { include: { permission: true } } },
         },
@@ -45,13 +48,19 @@ export const authenticate = async (
     });
 
     if (!user) throw new UnauthorizedError('User not found');
-    if (user.status !== 'ACTIVE') throw new UnauthorizedError('Account is inactive');
-    if (!user.companyId) throw new UnauthorizedError('User is not assigned to a company');
-    if (decoded.companyId && decoded.companyId !== user.companyId) {
+    if (decoded.tokenVersion !== user.tokenVersion) throw new UnauthorizedError('Session has been revoked');
+    if (user.status !== 'ACTIVE' || (user.company && user.company.status !== 'ACTIVE')) throw new UnauthorizedError('Account is inactive');
+
+    const isSuperAdmin = user.role.name === 'SUPERADMIN';
+    const validScope = (isSuperAdmin && user.scope === 'GLOBAL' && !user.companyId)
+      || (!isSuperAdmin && user.scope === 'COMPANY' && !!user.companyId);
+    if (!validScope) throw new UnauthorizedError('Invalid account scope configuration');
+
+    if (user.scope === 'COMPANY' && decoded.companyId !== user.companyId) {
       throw new UnauthorizedError('Tenant context is no longer valid');
     }
 
-    req.companyId = user.companyId;
+    req.companyId = user.scope === 'COMPANY' ? user.companyId! : undefined;
     req.user = {
       id: user.id,
       email: user.email,
@@ -59,7 +68,9 @@ export const authenticate = async (
       roleName: user.role.name,
       department: user.department,
       companyId: user.companyId,
+      scope: user.scope,
       permissions: user.role.rolePermissions.map((p) => p.permission.name),
+      tokenVersion: user.tokenVersion,
     };
 
     next();
@@ -72,6 +83,34 @@ export const authenticate = async (
   }
 };
 
+/** Require a recent MFA code before high-impact platform mutations. */
+export const requireStepUp = async (req: AuthRequest, _res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (!req.user || req.user.roleName !== 'SUPERADMIN' || req.user.scope !== 'GLOBAL') {
+      next(new ForbiddenError('Super Admin step-up authentication required'));
+      return;
+    }
+    const code = req.get('x-mfa-code');
+    if (!code) {
+      next(new ForbiddenError('MFA step-up code required'));
+      return;
+    }
+    const user = await prisma.user.findUnique({ where: { id: req.user.id }, select: { mfaEnabled: true, mfaSecret: true } });
+    if (!user?.mfaEnabled || !user.mfaSecret) {
+      next(new ForbiddenError('MFA must be enabled before this operation'));
+      return;
+    }
+    const { decryptMfaSecret, verifyTotp } = await import('../utils/mfa');
+    if (!verifyTotp(decryptMfaSecret(user.mfaSecret), code)) {
+      next(new ForbiddenError('Invalid MFA step-up code'));
+      return;
+    }
+    next();
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const authorize = (...permissionNames: string[]) => {
   return (req: AuthRequest, _res: Response, next: NextFunction): void => {
     if (!req.user) {
@@ -79,7 +118,15 @@ export const authorize = (...permissionNames: string[]) => {
       return;
     }
 
-    // Admin has all permissions
+    // Existing application routes are company-scoped. A global Super Admin
+    // must use an explicit /system route and target-company context instead
+    // of accidentally turning a normal route into a global query.
+    if (req.user.scope === 'GLOBAL') {
+      next(new ForbiddenError('A company context is required for this route'));
+      return;
+    }
+
+    // Admin has all existing company-scoped permissions.
     if (req.user.roleName === 'ADMIN') {
       next();
       return;
@@ -94,6 +141,26 @@ export const authorize = (...permissionNames: string[]) => {
       return;
     }
 
+    next();
+  };
+};
+
+/** Authorize an explicitly global platform route. */
+export const authorizeSystem = (...permissionNames: string[]) => {
+  return (req: AuthRequest, _res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      next(new UnauthorizedError());
+      return;
+    }
+    if (req.user.roleName !== 'SUPERADMIN' || req.user.scope !== 'GLOBAL') {
+      next(new ForbiddenError('Super Admin access required'));
+      return;
+    }
+    const hasPermission = permissionNames.some((permission) => req.user!.permissions.includes(permission));
+    if (!hasPermission) {
+      next(new ForbiddenError('Insufficient system permissions'));
+      return;
+    }
     next();
   };
 };

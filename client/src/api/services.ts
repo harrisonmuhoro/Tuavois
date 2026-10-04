@@ -6,16 +6,32 @@ import type {
 
 // ---- AUTH ----
 export const authApi = {
-  login: (data: { email: string; password: string }) => api.post<ApiResponse<{ token: string; user: any; company: import('../types').Company }>>('/auth/login', data),
+  login: (data: { email: string; password: string; otp?: string }) => api.post<ApiResponse<{ token: string; user: any; company: import('../types').Company | null }>>('/auth/login', data),
   logout: () => api.post('/auth/logout'),
   me: () => api.get<ApiResponse<User & { company: import('../types').Company }>>('/auth/me'),
   changePassword: (data: { currentPassword: string; newPassword: string }) => api.put('/auth/change-password', data),
+  setupMfa: () => api.post<ApiResponse<{ secret: string; otpauthUrl: string }>>('/auth/mfa/setup'),
+  verifyMfa: (code: string) => api.post<ApiResponse<{ enabled: boolean }>>('/auth/mfa/verify', { code }),
 };
 
 // ---- COMPANY PROVISIONING ----
 export const companiesApi = {
   provision: (data: { company: Record<string, unknown>; owner: { name: string; email: string; password: string; phone?: string } }) =>
     api.post<ApiResponse<any>>('/companies', data),
+};
+
+// ---- SYSTEM ADMINISTRATION ----
+export const systemApi = {
+  companies: (params?: Record<string, unknown>) => api.get<ApiResponse<any[]>>('/system/companies', { params }),
+  company: (id: string) => api.get<ApiResponse<any>>(`/system/companies/${id}`),
+  createCompany: (data: Record<string, unknown>) => api.post<ApiResponse<any>>('/system/companies', data),
+  updateCompany: (id: string, data: Record<string, unknown>) => api.patch<ApiResponse<any>>(`/system/companies/${id}`, data),
+  suspendCompany: (id: string) => api.post<ApiResponse<any>>(`/system/companies/${id}/suspend`),
+  users: (params?: Record<string, unknown>) => api.get<ApiResponse<any[]>>('/system/users', { params }),
+  updateUser: (id: string, data: Record<string, unknown>) => api.patch<ApiResponse<any>>(`/system/users/${id}`, data),
+  suspendUser: (id: string, reason: string) => api.post<ApiResponse<any>>(`/system/users/${id}/suspend`, { reason }),
+  report: () => api.get<ApiResponse<Record<string, number>>>('/system/reports'),
+  auditLogs: (params?: Record<string, unknown>) => api.get<ApiResponse<any[]>>('/system/audit-logs', { params }),
 };
 
 // ---- ADMIN ----

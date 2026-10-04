@@ -19,6 +19,12 @@ async function main() {
     'trips.view', 'trips.create', 'trips.edit',
     'reports.view', 'finance.view', 'staff.manage', 'settings.manage',
     'letters.view', 'letters.create', 'letters.edit', 'letters.delete',
+    'companies.view', 'companies.create', 'companies.edit', 'companies.suspend',
+    'users.view.global', 'users.manage.global', 'reports.view.global', 'audit.view.global',
+  ];
+  const platformPermissionNames = [
+    'companies.view', 'companies.create', 'companies.edit', 'companies.suspend',
+    'users.view.global', 'users.manage.global', 'reports.view.global', 'audit.view.global',
   ];
 
   const createdPermissions = await Promise.all(
@@ -27,11 +33,44 @@ async function main() {
     )
   );
   console.log('✅ Permissions created');
+  const applicationPermissions = createdPermissions.filter((permission) => !platformPermissionNames.includes(permission.name));
 
   const adminRole = await prisma.role.upsert({
-    where: { name: 'ADMIN' }, update: { rolePermissions: { deleteMany: {}, create: createdPermissions.map((p) => ({ permissionId: p.id })) } },
-    create: {  name: 'ADMIN', description: 'Full system access', rolePermissions: { create: createdPermissions.map((p) => ({ permissionId: p.id })) } },
+    where: { name: 'ADMIN' }, update: { rolePermissions: { deleteMany: {}, create: applicationPermissions.map((p) => ({ permissionId: p.id })) } },
+    create: {  name: 'ADMIN', description: 'Full system access', rolePermissions: { create: applicationPermissions.map((p) => ({ permissionId: p.id })) } },
   });
+
+  const superAdminRole = await prisma.role.upsert({
+    where: { name: 'SUPERADMIN' },
+    update: {
+      description: 'Platform-wide system administrator',
+      rolePermissions: {
+        deleteMany: {},
+        create: createdPermissions.map((permission) => ({ permissionId: permission.id })),
+      },
+    },
+    create: {
+      name: 'SUPERADMIN',
+      description: 'Platform-wide system administrator',
+      rolePermissions: { create: createdPermissions.map((permission) => ({ permissionId: permission.id })) },
+    },
+  });
+  void superAdminRole;
+
+  const bootstrapValues = [process.env.SUPERADMIN_NAME, process.env.SUPERADMIN_EMAIL, process.env.SUPERADMIN_PASSWORD];
+  if (bootstrapValues.some(Boolean) && bootstrapValues.some((value) => !value)) {
+    throw new Error('SUPERADMIN_NAME, SUPERADMIN_EMAIL, and SUPERADMIN_PASSWORD must be provided together');
+  }
+  if (process.env.SUPERADMIN_EMAIL && process.env.SUPERADMIN_PASSWORD) {
+    if (process.env.SUPERADMIN_PASSWORD.length < 10) throw new Error('SUPERADMIN_PASSWORD must be at least 10 characters');
+    const bootstrapPassword = await bcrypt.hash(process.env.SUPERADMIN_PASSWORD, 12);
+    await prisma.user.upsert({
+      where: { email: process.env.SUPERADMIN_EMAIL },
+      update: { name: process.env.SUPERADMIN_NAME, roleId: superAdminRole.id, companyId: null, scope: 'GLOBAL', mustChangePassword: true, status: 'ACTIVE' },
+      create: { name: process.env.SUPERADMIN_NAME!, email: process.env.SUPERADMIN_EMAIL, password: bootstrapPassword, roleId: superAdminRole.id, companyId: null, scope: 'GLOBAL', mustChangePassword: true },
+    });
+    console.log('✅ Bootstrap Super Admin configured (credentials not logged)');
+  }
 
   const staffPerms = createdPermissions.filter((p) =>
     ['dashboard.view', 'search.view', 'clients.view', 'clients.create', 'clients.edit', 'prospects.view', 'prospects.create', 'quotations.view', 'quotations.create', 'invoices.view', 'payments.view', 'trips.view', 'trips.create'].includes(p.name)

@@ -132,6 +132,7 @@ export default function Sidebar({ id, collapsed, onToggle, mobileOpen = false, o
 
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
+        {auth?.user.role === 'SUPERADMIN' && auth.user.scope === 'GLOBAL' && <Link to="/system" onClick={onClose} className={cn('flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-semibold transition-all', isActive('/system') ? 'bg-amber-400 text-[#0f4c81]' : 'bg-white/10 text-amber-200 hover:bg-white/20')} title={collapsed ? 'System administration' : undefined}><span className="text-lg">◆</span>{!collapsed && 'System administration'}</Link>}
         {navItems.map((item, idx) => {
           if ('href' in item) {
             if (!canAccess(item.href)) return null;

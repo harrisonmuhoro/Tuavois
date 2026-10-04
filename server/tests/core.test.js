@@ -4,13 +4,14 @@ const { Prisma } = require('@prisma/client');
 
 const { calculateInvoiceTotals } = require('../dist/controllers/invoices.controller');
 const { determineInvoiceStatus } = require('../dist/controllers/payments.controller');
-const { validate, loginSchema, creditNoteApplicationSchema, companyProvisionSchema } = require('../dist/validators');
-const { authorize } = require('../dist/middleware/auth.middleware');
+const { validate, loginSchema, creditNoteApplicationSchema, companyProvisionSchema, systemCompanyUpdateSchema, systemUserSuspendSchema, systemUserUpdateSchema } = require('../dist/validators');
+const { authorize, authorizeSystem } = require('../dist/middleware/auth.middleware');
 const { reserveDocumentNumber } = require('../dist/utils/sequences');
 const { runSerializableTransaction } = require('../dist/utils/transactions');
 const { errorHandler } = require('../dist/middleware/error.middleware');
 const { AppError } = require('../dist/utils/errors');
 const { validateEnvironment } = require('../dist/config/environment');
+const { createMfaSecret, totp, verifyTotp } = require('../dist/utils/mfa');
 
 const invoke = (middleware, req = {}) => new Promise((resolve) => {
   middleware(req, {}, (error) => resolve(error));
@@ -54,6 +55,46 @@ test('authorization covers every protected permission family', async () => {
     assert.equal(allowed, undefined, `expected ${permission} to allow matching permission`);
     assert.equal(denied?.statusCode, 403, `expected ${permission} to deny missing permission`);
   }
+});
+
+test('global Super Admins cannot use ordinary company routes without context', async () => {
+  const error = await invoke(authorize('clients.view'), {
+    user: { roleName: 'SUPERADMIN', scope: 'GLOBAL', permissions: ['clients.view'] },
+  });
+  assert.equal(error?.statusCode, 403);
+});
+
+test('system authorization requires global Super Admin scope and the declared permission', async () => {
+  const allowed = await invoke(authorizeSystem('companies.view'), {
+    user: { roleName: 'SUPERADMIN', scope: 'GLOBAL', permissions: ['companies.view'] },
+  });
+  const wrongRole = await invoke(authorizeSystem('companies.view'), {
+    user: { roleName: 'ADMIN', scope: 'COMPANY', permissions: ['companies.view'] },
+  });
+  const missingPermission = await invoke(authorizeSystem('companies.view'), {
+    user: { roleName: 'SUPERADMIN', scope: 'GLOBAL', permissions: [] },
+  });
+  assert.equal(allowed, undefined);
+  assert.equal(wrongRole?.statusCode, 403);
+  assert.equal(missingPermission?.statusCode, 403);
+});
+
+test('system mutation validators reject unsafe scope-changing payloads', async () => {
+  const companyUpdate = { body: { status: 'SUSPENDED', name: 'Suspended Company' } };
+  assert.equal(await invoke(validate(systemCompanyUpdateSchema), companyUpdate), undefined);
+  const userUpdate = { body: { roleId: 'role-1', companyId: null, status: 'ACTIVE' } };
+  assert.equal(await invoke(validate(systemUserUpdateSchema), userUpdate), undefined);
+  const unsafe = { body: { password: 'should-not-be-updated-here' } };
+  assert.equal((await invoke(validate(systemUserUpdateSchema), unsafe)).name, 'ZodError');
+  assert.equal(await invoke(validate(systemUserSuspendSchema), { body: { reason: 'Security review required' } }), undefined);
+  assert.equal((await invoke(validate(systemUserSuspendSchema), { body: { reason: 'x' } })).name, 'ZodError');
+});
+
+test('TOTP MFA codes verify against the encrypted-secret workflow primitives', () => {
+  const secret = createMfaSecret();
+  const now = Date.now();
+  assert.equal(verifyTotp(secret, totp(secret, Math.floor(now / 30000)), now), true);
+  assert.equal(verifyTotp(secret, '000000', now), false);
 });
 
 test('role permission boundaries cover all four operational audiences', async () => {

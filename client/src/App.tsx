@@ -26,6 +26,7 @@ import { CompanySettingsPage } from './pages/CompanySettingsPage';
 import { CreditNotesPage } from './pages/CreditNotesPage';
 import { ClientProfilePage } from './pages/ClientProfilePage';
 import { Button } from './components/ui';
+import { SystemAdminPage } from './pages/SystemAdminPage';
 
 function ProtectedRoutes() {
   const { auth, hasPermission } = useAuth();
@@ -33,6 +34,8 @@ function ProtectedRoutes() {
   const navigate = useNavigate();
 
   if (!auth) return <Navigate to="/login" replace />;
+
+  if (location.pathname.startsWith('/system') && (auth.user.role !== 'SUPERADMIN' || auth.user.scope !== 'GLOBAL')) return <Navigate to="/dashboard" replace />;
 
   const protectedAreas = [
     ['/dashboard', 'dashboard.view'], ['/clients', 'clients.view'], ['/prospects', 'prospects.view'],
@@ -75,6 +78,8 @@ function ProtectedRoutes() {
         <Route path="/audit-log" element={<AuditLogPage />} />
         <Route path="/staff" element={<StaffPage />} />
         <Route path="/settings/company" element={<CompanySettingsPage />} />
+        <Route path="/system" element={<SystemAdminPage />} />
+        <Route path="/system/*" element={<SystemAdminPage />} />
         <Route path="*" element={<DashboardPage />} />
       </Routes>
     </AppLayout>

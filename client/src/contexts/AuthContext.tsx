@@ -4,7 +4,7 @@ import { authApi } from '../api/services';
 
 interface AuthContextType {
   auth: AuthState | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, otp?: string) => Promise<void>;
   logout: () => void;
   updateCompany: (company: Company) => void;
   hasPermission: (permission: string) => boolean;
@@ -51,10 +51,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }).catch(() => { /* The API client handles expired sessions; preserve the local session for its normal recovery path. */ });
   }, []);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const { data: res } = await authApi.login({ email, password });
+  const login = useCallback(async (email: string, password: string, otp?: string) => {
+    const { data: res } = await authApi.login({ email, password, otp });
     if (!res.success) throw new Error(res.message || 'Login failed');
-    const company: Company = res.data.company;
+    const company: Company | null = res.data.company;
     const authData: AuthState = { token: res.data.token, company, user: { ...res.data.user, role: workspaceRole(res.data.user) } };
     localStorage.setItem(TOKEN_KEY, authData.token);
     localStorage.setItem(USER_KEY, JSON.stringify(authData.user));

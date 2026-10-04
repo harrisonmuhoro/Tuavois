@@ -79,15 +79,14 @@ export const uploadDocument = async (req: AuthRequest, res: Response, next: Next
     await assertTenantRecord(prisma, 'quotation', quotationId, req.companyId!, 'Quotation');
     if (!canAccessDocument(req, { clientId: clientId || null, tripId: tripId || null, invoiceId: invoiceId || null, quotationId: quotationId || null }, 'edit')) throw new ForbiddenError('Insufficient permission to upload this document');
     
-    const url = `/uploads/${req.file.filename}`;
-    
     const doc = await prisma.document.create({
       data: {
         fileName: req.file.filename,
         originalName: req.file.originalname,
         mimeType: req.file.mimetype,
         size: req.file.size,
-        url,
+        // Files are served only through the authorized download endpoint.
+        url: '',
         clientId: clientId || null,
         tripId: tripId || null,
         invoiceId: invoiceId || null,
@@ -96,8 +95,11 @@ export const uploadDocument = async (req: AuthRequest, res: Response, next: Next
         companyId: req.user?.companyId,
       }
     });
+
+    const securedUrl = `/api/v1/documents/${doc.id}`;
+    const updatedDoc = await prisma.document.update({ where: { id: doc.id }, data: { url: securedUrl } });
     
-    res.status(201).json({ success: true, data: doc });
+    res.status(201).json({ success: true, data: updatedDoc });
   } catch (error) { next(error); }
 };
 

@@ -1,13 +1,15 @@
 import { AuthRequest } from '../middleware/auth.middleware';
-import { NotFoundError } from './errors';
+import { ForbiddenError, NotFoundError } from './errors';
 
 /**
  * Returns the companyId scope for Prisma where clauses.
  * Ensures every query is tenant-isolated.
  */
-export const tenantScope = (req: AuthRequest): { companyId: string } => ({
-  companyId: req.companyId ?? req.user!.companyId,
-});
+export const tenantScope = (req: AuthRequest): { companyId: string } => {
+  const companyId = req.companyId ?? (req.user?.scope === 'COMPANY' ? req.user.companyId : null);
+  if (!companyId) throw new ForbiddenError('A company context is required for this operation');
+  return { companyId };
+};
 
 /** Verify an optional relation belongs to the authenticated company. */
 export const assertTenantRecord = async (

@@ -7,6 +7,8 @@ export function LoginPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [otp, setOtp] = useState('');
+  const [requiresMfa, setRequiresMfa] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -17,10 +19,12 @@ export function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      await login(email, password);
+      await login(email, password, otp || undefined);
       navigate('/dashboard', { replace: true });
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Unable to sign in');
+      const message = reason instanceof Error ? reason.message : 'Unable to sign in';
+      setRequiresMfa(message.toLowerCase().includes('mfa'));
+      setError(message);
     } finally {
       setLoading(false);
     }
@@ -45,6 +49,7 @@ export function LoginPage() {
             Email
             <input autoComplete="username" className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
           </label>
+          {requiresMfa && <label className="block text-sm font-medium text-slate-700">MFA code<input inputMode="numeric" autoComplete="one-time-code" maxLength={6} className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" value={otp} onChange={(event) => setOtp(event.target.value.replace(/\D/g, ''))} required /></label>}
           <label className="block text-sm font-medium text-slate-700">
             Password
             <input autoComplete="current-password" className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required />
